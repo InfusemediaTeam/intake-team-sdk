@@ -52,6 +52,11 @@ A department may publish **other** tools for the host's assistant to call — a
 reference table, a classification guide. Declare them `readOnly: true`; a host
 is expected to refuse to adapt a tool that does not.
 
+`createTeamServer` throws if one of them takes a reserved name, or if two take
+the same name as each other. Dispatch answers the contract names first, so such
+a tool would be published and then never reached — a failure a caller cannot see
+at runtime, so it stops startup instead.
+
 Two conventions matter when writing rules:
 
 - **A blocker is what the requester is asked for.** It is surfaced in the
@@ -177,6 +182,21 @@ rather than starting: an unauthenticated intake endpoint is reachable by anyone
 who can route to it, and the failure is silent. Both paths are overridable
 (`path`, `healthPath`).
 
+**Shutdown is yours.** It returns the `http.Server` and installs no signal
+handlers; nothing in the SDK ends the process. Close the listener as part of
+whatever shutdown your entry point already has:
+
+```ts
+const listener = runHttpTeamServer(EXAMPLE_TEAM, { port, authToken });
+
+process.once('SIGTERM', () => listener.close());
+```
+
+Pass `handleSignals: true` to have it register that closer for `SIGINT` and
+`SIGTERM` itself. It is off by default, and even when on it only closes the
+listener — an embedding application has its own shutdown order, and a handler
+installed here would run beside it rather than within it.
+
 ## The integration flow
 
 What a host does with a server, and where your code runs:
@@ -211,7 +231,8 @@ partially understood.
 | | SDK | Department |
 | --- | --- | --- |
 | MCP server, `tools/list`, `tools/call` dispatch | ✅ | |
-| stdio and streamable HTTP transports, startup and shutdown | ✅ | |
+| stdio and streamable HTTP transports, and starting them | ✅ | |
+| Closing the HTTP listener, and when the process ends | | ✅ |
 | Bearer-token authentication on HTTP | ✅ | |
 | Parsing an incoming draft, surviving a malformed one | ✅ | |
 | Blocker/warning bookkeeping, enum and required-field checks | ✅ | |
@@ -251,11 +272,16 @@ nothing else, so it cannot route onto a board it was not configured for.
 ## Working on the SDK
 
 ```
-npm run build       # tsc -> dist/
+npm run build       # tsconfig.build.json -> dist/, src only
 npm run typecheck
 npm run lint
-npm test            # node:test over the compiled output
+npm test            # tsconfig.json -> dist-test/, then node:test over it
 ```
+
+Two configs on purpose: `tsconfig.build.json` compiles `src` alone into `dist/`,
+which is what `files` publishes, while `tsconfig.json` compiles `src` and
+`tests` into `dist-test/` for typechecking and the suite. Tests and fixtures
+therefore cannot reach the package.
 
 ## License
 
