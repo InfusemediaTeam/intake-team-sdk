@@ -23,6 +23,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "prepare": "npm run build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint \"{src,tests}/**/*.ts\"",
     "test": "tsc -p tsconfig.json && node --test \"dist-test/tests/**/*.test.js\"",
