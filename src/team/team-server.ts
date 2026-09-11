@@ -5,12 +5,17 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 
 import {
+  CONTRACT_TOOL_NAMES,
   GET_TEAM_DESCRIPTOR_TOOL,
   RENDER_TICKET_TOOL,
   VALIDATE_DEFINITION_OF_READY_TOOL,
 } from '../contract/contract.constants';
 import { toIntakeDraft } from '../draft/draft.helper';
-import type { ITeamDefinition, IToolInputSchema } from './team-definition';
+import type {
+  ITeamDefinition,
+  ITeamTool,
+  IToolInputSchema,
+} from './team-definition';
 
 /** Every contract tool that takes a draft advertises this same argument shape. */
 const DRAFT_INPUT_SCHEMA: IToolInputSchema = {
@@ -41,6 +46,9 @@ const SERVER_VERSION = '1.0.0';
  * tools' JSON Schema verbatim, because a host converts a model-facing schema
  * into its own schema type and a generated one would carry shapes that
  * conversion has to reject.
+ *
+ * @throws If a team tool takes a reserved contract name, or two take the same
+ * name as each other.
  */
 export function createTeamServer(definition: ITeamDefinition): Server {
   const server = new Server(
@@ -52,6 +60,8 @@ export function createTeamServer(definition: ITeamDefinition): Server {
   );
 
   const teamTools = definition.tools ?? [];
+
+  assertToolNamesUsable(teamTools);
 
   server.setRequestHandler(ListToolsRequestSchema, () => ({
     tools: [
@@ -118,6 +128,35 @@ export function createTeamServer(definition: ITeamDefinition): Server {
   });
 
   return server;
+}
+
+/**
+ * Every team tool name checked before the server is handed back.
+ *
+ * Dispatch answers the contract names first, so a team tool taking one would be
+ * published in `tools/list` and then never reached — and a host calling it would
+ * get the contract's answer, not the team's. Two team tools sharing a name is
+ * the same ambiguity one step further in, resolved silently by declaration
+ * order. Neither is something a caller can see at runtime, so both stop startup
+ * here rather than becoming a misrouted call later.
+ */
+function assertToolNamesUsable(tools: readonly ITeamTool[]): void {
+  const seen = new Set<string>();
+
+  for (const { name } of tools) {
+    if (CONTRACT_TOOL_NAMES.includes(name)) {
+      throw new Error(
+        `Team tool "${name}" uses a name reserved by the intake contract. ` +
+          `Reserved names: ${CONTRACT_TOOL_NAMES.join(', ')}.`,
+      );
+    }
+
+    if (seen.has(name)) {
+      throw new Error(`Team tool "${name}" is declared more than once.`);
+    }
+
+    seen.add(name);
+  }
 }
 
 /**

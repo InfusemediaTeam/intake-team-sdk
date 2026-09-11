@@ -12,6 +12,11 @@ import { EXAMPLE_TEAM } from './example-team.fixture';
 
 const TOKEN = 'test-token';
 
+const SIGNALS = ['SIGINT', 'SIGTERM'] as const;
+
+const signalListenerCount = (): number =>
+  SIGNALS.reduce((total, signal) => total + process.listenerCount(signal), 0);
+
 /**
  * The HTTP path end to end: a real listener, a real MCP client over streamable
  * HTTP, and the bearer check in front of both.
@@ -37,6 +42,39 @@ describe('runHttpTeamServer', () => {
         message: /auth token is required/i,
       },
     );
+  });
+
+  it('installs no process signal handlers by default', () => {
+    // A library that registers these takes a decision that is the caller's: an
+    // embedding application has its own shutdown order, and a handler installed
+    // here would run beside it rather than within it.
+    const baseline = signalListenerCount();
+    const server = runHttpTeamServer(EXAMPLE_TEAM, {
+      port: 0,
+      authToken: TOKEN,
+    });
+
+    assert.equal(signalListenerCount(), baseline);
+
+    server.close();
+  });
+
+  it('closes the listener on a signal only when the caller opts in', () => {
+    const baseline = signalListenerCount();
+    const server = runHttpTeamServer(EXAMPLE_TEAM, {
+      port: 0,
+      authToken: TOKEN,
+      handleSignals: true,
+    });
+
+    assert.equal(signalListenerCount(), baseline + SIGNALS.length);
+
+    for (const signal of SIGNALS) process.emit(signal, signal);
+
+    // Registered with `once`, so nothing is left behind for the rest of the
+    // suite, and the process is not ended on the caller's behalf.
+    assert.equal(signalListenerCount(), baseline);
+    assert.equal(server.listening, false);
   });
 
   it('answers a health check with the team it serves', async () => {

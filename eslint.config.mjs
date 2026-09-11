@@ -9,7 +9,7 @@ import tseslint from 'typescript-eslint';
  * boundary, and an unchecked `any` here is a malformed contract there.
  */
 export default tseslint.config(
-  { ignores: ['eslint.config.mjs', 'dist/**'] },
+  { ignores: ['eslint.config.mjs', 'dist/**', 'dist-test/**'] },
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   eslintPluginPrettierRecommended,

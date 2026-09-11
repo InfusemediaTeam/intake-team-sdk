@@ -22,12 +22,25 @@ const DEFAULT_HEALTH_PATH = '/health';
 /** One intake draft is a few kilobytes; this bounds the parser generously. */
 const MAX_BODY_SIZE = '256kb';
 
+/** Only consulted when the caller opts into signal handling. */
+const SHUTDOWN_SIGNALS = ['SIGINT', 'SIGTERM'] as const;
+
 export interface IHttpTeamServerOptions {
   readonly port: number;
   /** Presented by the caller as `Authorization: Bearer <token>`. */
   readonly authToken: string;
   readonly path?: string;
   readonly healthPath?: string;
+  /**
+   * Close the listener on `SIGINT` and `SIGTERM`. Off by default.
+   *
+   * A library that installs process-wide handlers takes a decision that is the
+   * caller's: an application embedding this server has its own shutdown order,
+   * and a handler registered here would run beside it rather than within it.
+   * Opting in closes the listener and nothing else — the process still ends
+   * when the caller lets it.
+   */
+  readonly handleSignals?: boolean;
 }
 
 /**
@@ -42,6 +55,9 @@ export interface IHttpTeamServerOptions {
  * endpoint is reachable by anyone who can route to it, and the failure is
  * silent — so a missing token stops the server starting instead.
  *
+ * Lifecycle belongs to the caller: the listener is returned, and closing it is
+ * theirs to do. Nothing here ends the process.
+ *
  * @throws If `authToken` is blank.
  */
 export function runHttpTeamServer(
@@ -49,6 +65,7 @@ export function runHttpTeamServer(
   options: IHttpTeamServerOptions,
 ): HttpServer {
   const { port, authToken } = options;
+  const handleSignals = options.handleSignals ?? false;
   const mcpPath = options.path ?? DEFAULT_MCP_PATH;
   const healthPath = options.healthPath ?? DEFAULT_HEALTH_PATH;
 
@@ -106,6 +123,17 @@ export function runHttpTeamServer(
         // A caller that disconnects mid-request makes the transport throw, and
         // an unhandled rejection here would end the process — taking the
         // department offline over one abandoned request.
+        //
+        // The transport may already have answered by the time it throws. Writing
+        // a second time raises ERR_HTTP_HEADERS_SENT, so a half-sent response is
+        // dropped instead: the caller sees a broken connection, which is what
+        // happened, rather than the server failing on its own error path.
+        if (response.headersSent) {
+          response.destroy();
+
+          return;
+        }
+
         rpcError(response, 500, INTERNAL_ERROR_RPC_CODE, 'Internal error');
       }
     },
@@ -119,9 +147,11 @@ export function runHttpTeamServer(
     );
   });
 
-  // Nothing spawned this process, so it has to end on its own signal.
-  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-    process.on(signal, () => listener.close(() => process.exit(0)));
+  if (handleSignals) {
+    // `once`, so repeated signals cannot stack handlers on a long-lived process.
+    for (const signal of SHUTDOWN_SIGNALS) {
+      process.once(signal, () => listener.close());
+    }
   }
 
   return listener;

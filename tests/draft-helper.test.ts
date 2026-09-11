@@ -31,6 +31,18 @@ describe('toIntakeDraft', () => {
     assert.equal(parsed.core.title, null);
   });
 
+  it('trims core fields and the requester, as fieldValue trims a field', () => {
+    const parsed = toIntakeDraft({
+      draft: {
+        core: { title: '  A title  ' },
+        requester: { displayName: '  Ada  ' },
+      },
+    });
+
+    assert.equal(parsed.core.title, 'A title');
+    assert.equal(parsed.requester.displayName, 'Ada');
+  });
+
   it('survives every malformed shape rather than throwing', () => {
     for (const hostile of [
       undefined,

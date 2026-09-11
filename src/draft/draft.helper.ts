@@ -79,8 +79,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/**
+ * One incoming string, normalised the way `fieldValue` normalises a team field:
+ * trimmed, and blank read as absent.
+ *
+ * It returned the untrimmed value before, so a padded core field and a padded
+ * team field came out differently — and a renderer joining the two produced
+ * stray whitespace that only appeared for some drafts.
+ */
 function text(value: unknown): string | null {
-  return typeof value === 'string' && value.trim().length > 0 ? value : null;
+  if (typeof value !== 'string') return null;
+
+  const trimmed = value.trim();
+
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function stringMap(value: unknown): Record<string, string> {

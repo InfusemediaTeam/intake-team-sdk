@@ -10,8 +10,12 @@ import {
   VALIDATE_DEFINITION_OF_READY_TOOL,
 } from '../src/contract/contract.constants';
 import { createTeamServer } from '../src/team/team-server';
-import type { ITeamDefinition } from '../src/team/team-definition';
-import { EXAMPLE_DRAFT, EXAMPLE_TEAM } from './example-team.fixture';
+import type { ITeamDefinition, ITeamTool } from '../src/team/team-definition';
+import {
+  EXAMPLE_DRAFT,
+  EXAMPLE_TEAM,
+  EXAMPLE_TOOL,
+} from './example-team.fixture';
 
 /** A live client wired to a server over an in-memory pair — no process, no port. */
 const connect = async (definition: ITeamDefinition): Promise<Client> => {
@@ -211,6 +215,44 @@ describe('createTeamServer', () => {
       );
 
       await client.close();
+    });
+  });
+
+  describe('tool name validation', () => {
+    const withTools = (tools: readonly ITeamTool[]): ITeamDefinition => ({
+      ...EXAMPLE_TEAM,
+      tools,
+    });
+
+    const named = (name: string): ITeamTool => ({ ...EXAMPLE_TOOL, name });
+
+    for (const reserved of [
+      GET_TEAM_DESCRIPTOR_TOOL,
+      VALIDATE_DEFINITION_OF_READY_TOOL,
+      RENDER_TICKET_TOOL,
+    ]) {
+      it(`refuses a team tool named ${reserved}`, () => {
+        // Dispatch answers the contract name first, so this tool would be
+        // published and then never reached. Failing at creation is the only
+        // point at which anyone finds out.
+        assert.throws(() => createTeamServer(withTools([named(reserved)])), {
+          message: /reserved by the intake contract/i,
+        });
+      });
+    }
+
+    it('refuses two team tools sharing a name', () => {
+      assert.throws(
+        () =>
+          createTeamServer(withTools([named('duplicate'), named('duplicate')])),
+        { message: /declared more than once/i },
+      );
+    });
+
+    it('accepts distinct team names that are not reserved', () => {
+      assert.doesNotThrow(() =>
+        createTeamServer(withTools([named('one'), named('two')])),
+      );
     });
   });
 });
