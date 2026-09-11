@@ -181,6 +181,41 @@ describe('jiraMappingFromEnv', () => {
 
       assert.equal('assigneeEmail' in result, false);
     });
+
+    it('lower-cases the address it carries through', () => {
+      // One value however the environment capitalised it, so a host comparing
+      // the string rather than resolving it through Jira still matches.
+      const result = mapping(
+        complete({
+          [`${PREFIX}_JIRA_ASSIGNEE_EMAIL`]: ' Owner@Example.INVALID ',
+        }),
+      );
+
+      assert.equal(result.assigneeEmail, 'owner@example.invalid');
+    });
+
+    it('refuses a value that is not shaped like an address', () => {
+      // The two easy mistakes are an account id and a display name; both start
+      // a healthy-looking server and fail only when a host assigns a ticket.
+      const refused: readonly string[] = [
+        '5b10a2844c20165700ede21g',
+        'Anna K.',
+        'owner@example',
+        'owner example.invalid',
+        'owner@ example.invalid',
+        '@example.invalid',
+      ];
+
+      refused.forEach((value) => {
+        given(complete({ [`${PREFIX}_JIRA_ASSIGNEE_EMAIL`]: value }));
+
+        assert.throws(
+          () => jiraMappingFromEnv(PREFIX, OPTIONS),
+          { message: /TESTTEAM_JIRA_ASSIGNEE_EMAIL/ },
+          `expected ${value} to be refused`,
+        );
+      });
+    });
   });
 
   describe('required values', () => {

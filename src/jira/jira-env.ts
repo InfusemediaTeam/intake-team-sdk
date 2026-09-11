@@ -16,6 +16,13 @@ import type { ITeamJiraMapping } from '../contract/contract.types';
 /** Separates entries in a list-valued variable, e.g. `intake,triage`. */
 const LIST_SEPARATOR = ',';
 
+/**
+ * Deliberately not RFC 5322. Telling an address apart from an account id or a
+ * display name is the whole job here, and a stricter pattern buys nothing for
+ * it while rejecting addresses a Jira instance would have accepted.
+ */
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 /** The team decisions the caller supplies rather than reads from the env. */
 export interface IJiraMappingOptions {
   /**
@@ -40,12 +47,12 @@ export interface IJiraMappingOptions {
  * variables and nothing else, so it cannot route onto a board it was not
  * configured for even by accident.
  *
- * | Variable                      | Required | Shape                                   |
- * | ----------------------------- | -------- | --------------------------------------- |
- * | `<PREFIX>_JIRA_PROJECT`       | yes      | Project key                             |
- * | `<PREFIX>_JIRA_LABELS`        | yes      | Comma-separated; first is the routing label |
- * | `<PREFIX>_JIRA_ISSUE_TYPE_ID` | no       | Numeric issue type id                   |
- * | `<PREFIX>_JIRA_ASSIGNEE_EMAIL`| no       | Account email to assign tickets to      |
+ * | Variable                       | Required | Shape                                   |
+ * | ------------------------------ | -------- | --------------------------------------- |
+ * | `<PREFIX>_JIRA_PROJECT`        | yes      | Project key                             |
+ * | `<PREFIX>_JIRA_LABELS`         | yes      | Comma-separated; first is the routing label |
+ * | `<PREFIX>_JIRA_ISSUE_TYPE_ID`  | no       | Numeric issue type id                   |
+ * | `<PREFIX>_JIRA_ASSIGNEE_EMAIL` | no       | Account email to assign tickets to      |
  *
  * @param prefix Upper-case team prefix, e.g. `EXAMPLE` for `EXAMPLE_JIRA_PROJECT`.
  * @throws If a required variable is absent or blank, naming the variable.
@@ -141,17 +148,33 @@ function optionalIssueTypeId(prefix: string): {
  * name: an id is minted per instance, so it would have to be re-looked-up to
  * promote between a sandbox and production.
  *
+ * Lower-cased as well as trimmed, so a mapping is one value however the address
+ * was capitalised in the environment: the descriptor goes to a host, and a host
+ * is free to compare the string rather than ask Jira to resolve it.
+ *
  * Spread as an absent key rather than an explicit `undefined`, so the
  * descriptor on the wire says nothing at all when nothing was configured.
+ *
+ * @throws If a value is configured but is not shaped like an email address.
  */
 function optionalAssigneeEmail(prefix: string): {
   readonly assigneeEmail?: string;
 } {
-  const raw = process.env[`${prefix}_JIRA_ASSIGNEE_EMAIL`];
+  const name = `${prefix}_JIRA_ASSIGNEE_EMAIL`;
+  const raw = process.env[name];
 
   if (raw === undefined || raw.trim().length === 0) return {};
 
-  return { assigneeEmail: raw.trim() };
+  const value = raw.trim().toLowerCase();
+
+  // Rejected here rather than at the board: the easy mistakes are configuring
+  // an account id or a display name, and both start a server that looks healthy
+  // and only fails once a host tries to assign a real ticket.
+  if (!EMAIL_SHAPE.test(value)) {
+    throw new Error(`${name} must be an account email, e.g. owner@example.com`);
+  }
+
+  return { assigneeEmail: value };
 }
 
 /** Blank entries dropped, so a trailing comma is not a nameless label. */
