@@ -66,12 +66,23 @@ Two conventions matter when writing rules:
 
 ## Installing
 
+The SDK is not published to npm. It is installed straight from its public
+GitHub repository:
+
 ```
-npm install intake-team-sdk
+npm install github:InfusemediaTeam/intake-team-sdk
+```
+
+That tracks the default branch. Pin a release to a Git tag instead, which is
+what a project depending on it should do:
+
+```
+npm install github:InfusemediaTeam/intake-team-sdk#v1.0.0
 ```
 
 Node 24 or newer, TypeScript, CommonJS output. `@modelcontextprotocol/sdk` and
-`express` come with it.
+`express` come with it. There is no build step to run: npm builds the package
+from source on install.
 
 ## A minimal department server
 
