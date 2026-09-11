@@ -30,6 +30,15 @@ export interface ITeamJiraMapping {
    */
   readonly issueTypeId?: string;
   readonly labels: readonly string[];
+  /**
+   * Account email of the person this team's tickets are assigned to.
+   *
+   * Optional because it is instance-specific, and because assignment is a
+   * choice rather than a requirement. Absent means "leave it unassigned", so a
+   * team that triages from its board is unaffected; set it when created tickets
+   * should land on one person instead of an open queue.
+   */
+  readonly assigneeEmail?: string;
 }
 
 /** Who the team is, as the requester is offered it. */

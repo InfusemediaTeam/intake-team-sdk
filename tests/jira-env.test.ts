@@ -15,6 +15,7 @@ const VARIABLES: readonly string[] = [
   `${PREFIX}_JIRA_PROJECT`,
   `${PREFIX}_JIRA_LABELS`,
   `${PREFIX}_JIRA_ISSUE_TYPE_ID`,
+  `${PREFIX}_JIRA_ASSIGNEE_EMAIL`,
 ];
 
 /**
@@ -152,6 +153,67 @@ describe('jiraMappingFromEnv', () => {
 
       assert.throws(() => jiraMappingFromEnv(PREFIX, OPTIONS), {
         message: /TESTTEAM_JIRA_ISSUE_TYPE_ID/,
+      });
+    });
+  });
+
+  describe('the optional assignee email', () => {
+    it('is absent from the mapping when nothing is configured', () => {
+      // An absent key rather than an explicit `undefined`, so the descriptor on
+      // the wire says nothing at all and the ticket is created unassigned.
+      assert.equal('assigneeEmail' in mapping(complete()), false);
+    });
+
+    it('is carried through, trimmed, when it is configured', () => {
+      const result = mapping(
+        complete({
+          [`${PREFIX}_JIRA_ASSIGNEE_EMAIL`]: '  owner@example.invalid  ',
+        }),
+      );
+
+      assert.equal(result.assigneeEmail, 'owner@example.invalid');
+    });
+
+    it('treats a blank value as unconfigured', () => {
+      const result = mapping(
+        complete({ [`${PREFIX}_JIRA_ASSIGNEE_EMAIL`]: '   ' }),
+      );
+
+      assert.equal('assigneeEmail' in result, false);
+    });
+
+    it('lower-cases the address it carries through', () => {
+      // One value however the environment capitalised it, so a host comparing
+      // the string rather than resolving it through Jira still matches.
+      const result = mapping(
+        complete({
+          [`${PREFIX}_JIRA_ASSIGNEE_EMAIL`]: ' Owner@Example.INVALID ',
+        }),
+      );
+
+      assert.equal(result.assigneeEmail, 'owner@example.invalid');
+    });
+
+    it('refuses a value that is not shaped like an address', () => {
+      // The two easy mistakes are an account id and a display name; both start
+      // a healthy-looking server and fail only when a host assigns a ticket.
+      const refused: readonly string[] = [
+        '5b10a2844c20165700ede21g',
+        'Anna K.',
+        'owner@example',
+        'owner example.invalid',
+        'owner@ example.invalid',
+        '@example.invalid',
+      ];
+
+      refused.forEach((value) => {
+        given(complete({ [`${PREFIX}_JIRA_ASSIGNEE_EMAIL`]: value }));
+
+        assert.throws(
+          () => jiraMappingFromEnv(PREFIX, OPTIONS),
+          { message: /TESTTEAM_JIRA_ASSIGNEE_EMAIL/ },
+          `expected ${value} to be refused`,
+        );
       });
     });
   });
