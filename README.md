@@ -260,6 +260,7 @@ the department's own.
 | `<PREFIX>_JIRA_PROJECT` | yes | Project key |
 | `<PREFIX>_JIRA_LABELS` | yes | Comma-separated; the first is the routing label |
 | `<PREFIX>_JIRA_ISSUE_TYPE_ID` | no | Numeric issue type id; blank inherits the host's default |
+| `<PREFIX>_JIRA_ASSIGNEE_EMAIL` | no | Account email to assign tickets to; blank leaves them unassigned |
 
 Call it at module load. A missing required variable then stops the server
 starting, and the host reports the department as unavailable — the honest

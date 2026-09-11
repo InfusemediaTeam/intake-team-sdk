@@ -15,6 +15,7 @@ const VARIABLES: readonly string[] = [
   `${PREFIX}_JIRA_PROJECT`,
   `${PREFIX}_JIRA_LABELS`,
   `${PREFIX}_JIRA_ISSUE_TYPE_ID`,
+  `${PREFIX}_JIRA_ASSIGNEE_EMAIL`,
 ];
 
 /**
@@ -153,6 +154,32 @@ describe('jiraMappingFromEnv', () => {
       assert.throws(() => jiraMappingFromEnv(PREFIX, OPTIONS), {
         message: /TESTTEAM_JIRA_ISSUE_TYPE_ID/,
       });
+    });
+  });
+
+  describe('the optional assignee email', () => {
+    it('is absent from the mapping when nothing is configured', () => {
+      // An absent key rather than an explicit `undefined`, so the descriptor on
+      // the wire says nothing at all and the ticket is created unassigned.
+      assert.equal('assigneeEmail' in mapping(complete()), false);
+    });
+
+    it('is carried through, trimmed, when it is configured', () => {
+      const result = mapping(
+        complete({
+          [`${PREFIX}_JIRA_ASSIGNEE_EMAIL`]: '  owner@example.invalid  ',
+        }),
+      );
+
+      assert.equal(result.assigneeEmail, 'owner@example.invalid');
+    });
+
+    it('treats a blank value as unconfigured', () => {
+      const result = mapping(
+        complete({ [`${PREFIX}_JIRA_ASSIGNEE_EMAIL`]: '   ' }),
+      );
+
+      assert.equal('assigneeEmail' in result, false);
     });
   });
 

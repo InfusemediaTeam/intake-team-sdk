@@ -45,6 +45,7 @@ export interface IJiraMappingOptions {
  * | `<PREFIX>_JIRA_PROJECT`       | yes      | Project key                             |
  * | `<PREFIX>_JIRA_LABELS`        | yes      | Comma-separated; first is the routing label |
  * | `<PREFIX>_JIRA_ISSUE_TYPE_ID` | no       | Numeric issue type id                   |
+ * | `<PREFIX>_JIRA_ASSIGNEE_EMAIL`| no       | Account email to assign tickets to      |
  *
  * @param prefix Upper-case team prefix, e.g. `EXAMPLE` for `EXAMPLE_JIRA_PROJECT`.
  * @throws If a required variable is absent or blank, naming the variable.
@@ -61,6 +62,7 @@ export function jiraMappingFromEnv(
     // nothing to name where it went.
     labels: requiredEnvList(`${prefix}_JIRA_LABELS`),
     ...optionalIssueTypeId(prefix),
+    ...optionalAssigneeEmail(prefix),
   };
 }
 
@@ -126,6 +128,30 @@ function optionalIssueTypeId(prefix: string): {
   }
 
   return { issueTypeId: value };
+}
+
+/**
+ * `<PREFIX>_JIRA_ASSIGNEE_EMAIL`, when this team assigns its tickets.
+ *
+ * Optional on purpose. A team that triages from its own board sets nothing and
+ * its tickets are created unassigned; a team that routes to one owner sets this
+ * and the host assigns to that account.
+ *
+ * An email rather than an account id for the same reason the issue type is a
+ * name: an id is minted per instance, so it would have to be re-looked-up to
+ * promote between a sandbox and production.
+ *
+ * Spread as an absent key rather than an explicit `undefined`, so the
+ * descriptor on the wire says nothing at all when nothing was configured.
+ */
+function optionalAssigneeEmail(prefix: string): {
+  readonly assigneeEmail?: string;
+} {
+  const raw = process.env[`${prefix}_JIRA_ASSIGNEE_EMAIL`];
+
+  if (raw === undefined || raw.trim().length === 0) return {};
+
+  return { assigneeEmail: raw.trim() };
 }
 
 /** Blank entries dropped, so a trailing comma is not a nameless label. */
