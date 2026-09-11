@@ -12,16 +12,16 @@ It knows nothing about any particular department.
 
 ## What it provides
 
-| Area | Exports |
-| --- | --- |
-| Contract | `INTAKE_CONTRACT_VERSION`, the three reserved tool names, `CONTRACT_TOOL_NAMES`, and the types (`ITeamDescriptor`, `IIntakeDraft`, `IDefinitionOfReadyVerdict`, `IRenderedTicket`, …) |
-| Server | `createTeamServer(definition)` — one `ITeamDefinition` published as an MCP server |
-| Transports | `runStdioTeamServer(definition)`, `runHttpTeamServer(definition, { port, authToken })` |
-| Authentication | Bearer-token checking on the HTTP transport, and `isBearerAuthorized` on its own |
-| Drafts | `toIntakeDraft` (tolerant parsing of a tool call's arguments), `filled`, `fieldValue`, `draftProse`, `includesAny` |
-| Readiness | `readiness(draft)` — a chainable report that collects blockers and warnings |
-| Rendering | `section`, `bullets`, `labelled`, `compose` for a markdown ticket body |
-| Configuration | `jiraMappingFromEnv(prefix, { issueType })`, `requiredEnv`, `requiredEnvList` |
+| Area           | Exports                                                                                                                                                                               |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Contract       | `INTAKE_CONTRACT_VERSION`, the three reserved tool names, `CONTRACT_TOOL_NAMES`, and the types (`ITeamDescriptor`, `IIntakeDraft`, `IDefinitionOfReadyVerdict`, `IRenderedTicket`, …) |
+| Server         | `createTeamServer(definition)` — one `ITeamDefinition` published as an MCP server                                                                                                     |
+| Transports     | `runStdioTeamServer(definition)`, `runHttpTeamServer(definition, { port, authToken })`                                                                                                |
+| Authentication | Bearer-token checking on the HTTP transport, and `isBearerAuthorized` on its own                                                                                                      |
+| Drafts         | `toIntakeDraft` (tolerant parsing of a tool call's arguments), `filled`, `fieldValue`, `draftProse`, `includesAny`                                                                    |
+| Readiness      | `readiness(draft)` — a chainable report that collects blockers and warnings                                                                                                           |
+| Rendering      | `section`, `bullets`, `labelled`, `compose` for a markdown ticket body                                                                                                                |
+| Configuration  | `jiraMappingFromEnv(prefix, { issueType })`, `requiredEnv`, `requiredEnvList`                                                                                                         |
 
 ## What it does not provide
 
@@ -30,7 +30,7 @@ It knows nothing about any particular department.
 - **No department registry.** The SDK never learns which departments exist; a
   server serves exactly one, and the host decides which servers it talks to.
 - **No outbound calls.** It does not talk to Jira or to anything else. A
-  department declares *where* its tickets go and *what they say*; the host is
+  department declares _where_ its tickets go and _what they say_; the host is
   what puts them there.
 - **No configuration values.** Every environment variable it reads is one the
   caller names, and it holds no defaults for URLs, tokens or credentials.
@@ -42,11 +42,11 @@ itself and is expected **not** to expose them to a model: a model able to call
 its own readiness check can pass itself, and one able to render its own ticket
 body can put anything on a board.
 
-| Tool | Returns |
-| --- | --- |
-| `intake_get_team_descriptor` | Identity, Jira mapping, fields, and readiness notes |
-| `intake_validate_definition_of_ready` | `{ ready, blockers[], warnings[] }` for one draft |
-| `intake_render_ticket` | `{ description, summary? }` in the department's own template |
+| Tool                                  | Returns                                                      |
+| ------------------------------------- | ------------------------------------------------------------ |
+| `intake_get_team_descriptor`          | Identity, Jira mapping, fields, and readiness notes          |
+| `intake_validate_definition_of_ready` | `{ ready, blockers[], warnings[] }` for one draft            |
+| `intake_render_ticket`                | `{ description, summary? }` in the department's own template |
 
 A department may publish **other** tools for the host's assistant to call — a
 reference table, a classification guide. Declare them `readOnly: true`; a host
@@ -223,44 +223,44 @@ Two expectations a host will hold you to, and the reason for each:
   already respects this.
 
 Assume a host validates everything you return, field by field, and treats a
-malformed descriptor as the department being *unavailable* rather than
+malformed descriptor as the department being _unavailable_ rather than
 partially understood.
 
 ## Who implements what
 
-| | SDK | Department |
-| --- | --- | --- |
-| MCP server, `tools/list`, `tools/call` dispatch | ✅ | |
-| stdio and streamable HTTP transports, and starting them | ✅ | |
-| Closing the HTTP listener, and when the process ends | | ✅ |
-| Bearer-token authentication on HTTP | ✅ | |
-| Parsing an incoming draft, surviving a malformed one | ✅ | |
-| Blocker/warning bookkeeping, enum and required-field checks | ✅ | |
-| Markdown section/bullet/compose primitives | ✅ | |
-| Reading `<PREFIX>_JIRA_*` into a mapping | ✅ | |
-| Team identity, title, subtitle | | ✅ |
-| The intake fields and their descriptions | | ✅ |
-| The issue type, and the prefix its routing is read from | | ✅ |
-| Definition of Ready rules and their wording | | ✅ |
-| Readiness notes published to the host | | ✅ |
-| The ticket template | | ✅ |
-| Any extra read-only tools | | ✅ |
-| Which environment variables exist, and their values | | ✅ |
+|                                                             | SDK | Department |
+| ----------------------------------------------------------- | --- | ---------- |
+| MCP server, `tools/list`, `tools/call` dispatch             | ✅  |            |
+| stdio and streamable HTTP transports, and starting them     | ✅  |            |
+| Closing the HTTP listener, and when the process ends        |     | ✅         |
+| Bearer-token authentication on HTTP                         | ✅  |            |
+| Parsing an incoming draft, surviving a malformed one        | ✅  |            |
+| Blocker/warning bookkeeping, enum and required-field checks | ✅  |            |
+| Markdown section/bullet/compose primitives                  | ✅  |            |
+| Reading `<PREFIX>_JIRA_*` into a mapping                    | ✅  |            |
+| Team identity, title, subtitle                              |     | ✅         |
+| The intake fields and their descriptions                    |     | ✅         |
+| The issue type, and the prefix its routing is read from     |     | ✅         |
+| Definition of Ready rules and their wording                 |     | ✅         |
+| Readiness notes published to the host                       |     | ✅         |
+| The ticket template                                         |     | ✅         |
+| Any extra read-only tools                                   |     | ✅         |
+| Which environment variables exist, and their values         |     | ✅         |
 
 ## Configuration convention
 
-A project key, a label and a field id belong to a Jira *instance*, not to a
+A project key, a label and a field id belong to a Jira _instance_, not to a
 department: the same department points at different keys in a sandbox and in
 production. So `jiraMappingFromEnv` reads them from the environment under a
 prefix the department chooses, and the descriptor keeps only what is genuinely
 the department's own.
 
-| Variable | Required | Shape |
-| --- | --- | --- |
-| `<PREFIX>_JIRA_PROJECT` | yes | Project key |
-| `<PREFIX>_JIRA_LABELS` | yes | Comma-separated; the first is the routing label |
-| `<PREFIX>_JIRA_ISSUE_TYPE_ID` | no | Numeric issue type id; blank inherits the host's default |
-| `<PREFIX>_JIRA_ASSIGNEE_EMAIL` | no | Account email to assign tickets to; blank leaves them unassigned |
+| Variable                       | Required | Shape                                                            |
+| ------------------------------ | -------- | ---------------------------------------------------------------- |
+| `<PREFIX>_JIRA_PROJECT`        | yes      | Project key                                                      |
+| `<PREFIX>_JIRA_LABELS`         | yes      | Comma-separated; the first is the routing label                  |
+| `<PREFIX>_JIRA_ISSUE_TYPE_ID`  | no       | Numeric issue type id; blank inherits the host's default         |
+| `<PREFIX>_JIRA_ASSIGNEE_EMAIL` | no       | Account email to assign tickets to; blank leaves them unassigned |
 
 Call it at module load. A missing required variable then stops the server
 starting, and the host reports the department as unavailable — the honest
