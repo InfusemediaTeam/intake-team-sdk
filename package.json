@@ -30,7 +30,7 @@
     "prepublishOnly": "npm run build && npm run lint && npm test"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "express": "^5.2.1"
   },
   "devDependencies": {
