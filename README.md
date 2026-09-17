@@ -272,6 +272,13 @@ the department's own.
 | `<PREFIX>_JIRA_LABELS`         | yes      | Comma-separated; the first is the routing label                  |
 | `<PREFIX>_JIRA_ISSUE_TYPE_ID`  | no       | Numeric issue type id; blank inherits the host's default         |
 | `<PREFIX>_JIRA_ASSIGNEE_EMAIL` | no       | Account email to assign tickets to; blank leaves them unassigned |
+| `<PREFIX>_JIRA_CUSTOM_FIELDS`  | no       | Comma-separated `customfield_<id>=value`; blank sets none        |
+
+`<PREFIX>_JIRA_CUSTOM_FIELDS` is read as pairs separated by commas —
+`customfield_10200=Ops,customfield_10201=Q3` — with an id taken from its value
+at the first `=`. A value may therefore contain `=` but not a comma. An id that
+is not `customfield_<digits>`, a blank value and a repeated id are refused at
+load rather than at the board.
 
 Call it at module load. A missing required variable then stops the server
 starting, and the host reports the department as unavailable — the honest

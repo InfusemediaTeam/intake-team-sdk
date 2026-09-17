@@ -16,6 +16,16 @@ import type { ITeamJiraMapping } from '../contract/contract.types';
 /** Separates entries in a list-valued variable, e.g. `intake,triage`. */
 const LIST_SEPARATOR = ',';
 
+/** Separates a custom field's id from its value, e.g. `customfield_10200=Ops`. */
+const PAIR_SEPARATOR = '=';
+
+/**
+ * The only shape a Jira custom field id has. Enforced for the same reason the
+ * issue type id is: the easy mistake is configuring the field's *name*, and a
+ * board answers that with a rejection that names nothing useful.
+ */
+const CUSTOM_FIELD_ID = /^customfield_\d+$/;
+
 /**
  * Deliberately not RFC 5322. Telling an address apart from an account id or a
  * display name is the whole job here, and a stricter pattern buys nothing for
@@ -53,6 +63,7 @@ export interface IJiraMappingOptions {
  * | `<PREFIX>_JIRA_LABELS`         | yes      | Comma-separated; first is the routing label |
  * | `<PREFIX>_JIRA_ISSUE_TYPE_ID`  | no       | Numeric issue type id                   |
  * | `<PREFIX>_JIRA_ASSIGNEE_EMAIL` | no       | Account email to assign tickets to      |
+ * | `<PREFIX>_JIRA_CUSTOM_FIELDS`  | no       | Comma-separated `customfield_<id>=value` |
  *
  * @param prefix Upper-case team prefix, e.g. `EXAMPLE` for `EXAMPLE_JIRA_PROJECT`.
  * @throws If a required variable is absent or blank, naming the variable.
@@ -70,6 +81,7 @@ export function jiraMappingFromEnv(
     labels: requiredEnvList(`${prefix}_JIRA_LABELS`),
     ...optionalIssueTypeId(prefix),
     ...optionalAssigneeEmail(prefix),
+    ...optionalCustomFields(prefix),
   };
 }
 
@@ -175,6 +187,70 @@ function optionalAssigneeEmail(prefix: string): {
   }
 
   return { assigneeEmail: value };
+}
+
+/**
+ * `<PREFIX>_JIRA_CUSTOM_FIELDS` configures Jira custom fields required by this team.
+ *
+ * Optional by design: teams without custom fields behave exactly as before.
+ * IDs are configured via environment variables because Jira field IDs differ
+ * between instances (for example, sandbox vs production).
+ *
+ * Format: `customfield_10200=Ops,customfield_10201=Q3`
+ * Comma-separated pairs, split on the first `=`. Values may contain `=`, but
+ * not commas.
+ *
+ * The descriptor omits `customFields` completely when nothing is configured.
+ *
+ * @throws If entries are invalid, field IDs are malformed, values are blank,
+ * or duplicate IDs are configured.
+ */
+function optionalCustomFields(prefix: string): {
+  readonly customFields?: Readonly<Record<string, string>>;
+}
+function optionalCustomFields(prefix: string): {
+  readonly customFields?: Readonly<Record<string, string>>;
+} {
+  const name = `${prefix}_JIRA_CUSTOM_FIELDS`;
+  const raw = process.env[name];
+
+  if (raw === undefined || raw.trim().length === 0) return {};
+
+  const customFields: Record<string, string> = {};
+
+  for (const entry of splitList(raw)) {
+    const separator = entry.indexOf(PAIR_SEPARATOR);
+
+    if (separator === -1) {
+      throw new Error(
+        `${name} entry "${entry}" must be id=value, e.g. customfield_10200=Ops`,
+      );
+    }
+
+    const id = entry.slice(0, separator).trim();
+    const value = entry.slice(separator + 1).trim();
+
+    if (!CUSTOM_FIELD_ID.test(id)) {
+      throw new Error(
+        `${name} id "${id}" must be a Jira custom field id, e.g. customfield_10200`,
+      );
+    }
+
+    if (value.length === 0) {
+      throw new Error(`${name} value for ${id} must not be blank`);
+    }
+
+    // Refused rather than last-wins: a repeated id is a mistake in the
+    // deployment, and silently keeping one of the two values puts whichever
+    // was not meant onto every ticket this team files.
+    if (id in customFields) {
+      throw new Error(`${name} lists ${id} more than once`);
+    }
+
+    customFields[id] = value;
+  }
+
+  return { customFields };
 }
 
 /** Blank entries dropped, so a trailing comma is not a nameless label. */
