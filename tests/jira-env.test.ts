@@ -16,6 +16,7 @@ const VARIABLES: readonly string[] = [
   `${PREFIX}_JIRA_LABELS`,
   `${PREFIX}_JIRA_ISSUE_TYPE_ID`,
   `${PREFIX}_JIRA_ASSIGNEE_EMAIL`,
+  `${PREFIX}_JIRA_CUSTOM_FIELDS`,
 ];
 
 /**
@@ -214,6 +215,110 @@ describe('jiraMappingFromEnv', () => {
           { message: /TESTTEAM_JIRA_ASSIGNEE_EMAIL/ },
           `expected ${value} to be refused`,
         );
+      });
+    });
+  });
+
+  describe('the optional custom fields', () => {
+    it('is absent from the mapping when nothing is configured', () => {
+      // An absent key rather than an explicit `undefined`, so a team that fills
+      // no custom field has its tickets created exactly as before.
+      assert.equal('customFields' in mapping(complete()), false);
+    });
+
+    it('reads every configured pair, trimmed', () => {
+      const result = mapping(
+        complete({
+          [`${PREFIX}_JIRA_CUSTOM_FIELDS`]:
+            ' customfield_10200 = Ops , customfield_10201=Q3 ',
+        }),
+      );
+
+      assert.deepEqual(result.customFields, {
+        customfield_10200: 'Ops',
+        customfield_10201: 'Q3',
+      });
+    });
+
+    it('treats a blank value as unconfigured', () => {
+      assert.equal(
+        'customFields' in
+          mapping(complete({ [`${PREFIX}_JIRA_CUSTOM_FIELDS`]: '   ' })),
+        false,
+      );
+    });
+
+    it('splits on the first separator, so a value may contain one', () => {
+      const result = mapping(
+        complete({
+          [`${PREFIX}_JIRA_CUSTOM_FIELDS`]: 'customfield_10200=a=b',
+        }),
+      );
+
+      assert.deepEqual(result.customFields, { customfield_10200: 'a=b' });
+    });
+
+    it('drops a trailing separator rather than reading a nameless entry', () => {
+      const result = mapping(
+        complete({
+          [`${PREFIX}_JIRA_CUSTOM_FIELDS`]: 'customfield_10200=Ops,',
+        }),
+      );
+
+      assert.deepEqual(result.customFields, { customfield_10200: 'Ops' });
+    });
+
+    it('refuses an entry that is not a pair', () => {
+      given(
+        complete({ [`${PREFIX}_JIRA_CUSTOM_FIELDS`]: 'customfield_10200' }),
+      );
+
+      assert.throws(() => jiraMappingFromEnv(PREFIX, OPTIONS), {
+        message: /TESTTEAM_JIRA_CUSTOM_FIELDS/,
+      });
+    });
+
+    it('refuses anything that is not a custom field id', () => {
+      // The easy mistake is configuring the field's name, which a board answers
+      // with a rejection that names nothing useful.
+      const refused: readonly string[] = [
+        'Department=Ops',
+        '10200=Ops',
+        'customfield_=Ops',
+        'customfield_abc=Ops',
+      ];
+
+      refused.forEach((entry) => {
+        given(complete({ [`${PREFIX}_JIRA_CUSTOM_FIELDS`]: entry }));
+
+        assert.throws(
+          () => jiraMappingFromEnv(PREFIX, OPTIONS),
+          { message: /TESTTEAM_JIRA_CUSTOM_FIELDS/ },
+          `expected ${entry} to be refused`,
+        );
+      });
+    });
+
+    it('refuses a blank value, which Jira would reject at creation', () => {
+      given(
+        complete({ [`${PREFIX}_JIRA_CUSTOM_FIELDS`]: 'customfield_10200=  ' }),
+      );
+
+      assert.throws(() => jiraMappingFromEnv(PREFIX, OPTIONS), {
+        message: /TESTTEAM_JIRA_CUSTOM_FIELDS/,
+      });
+    });
+
+    it('refuses the same id twice rather than picking one of the values', () => {
+      given(
+        complete({
+          [`${PREFIX}_JIRA_CUSTOM_FIELDS`]:
+            'customfield_10200=Ops,customfield_10200=Sales',
+        }),
+      );
+
+      assert.throws(() => jiraMappingFromEnv(PREFIX, OPTIONS), {
+        message: /TESTTEAM_JIRA_CUSTOM_FIELDS/,
       });
     });
   });
