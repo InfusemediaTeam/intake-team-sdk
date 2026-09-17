@@ -207,9 +207,6 @@ function optionalAssigneeEmail(prefix: string): {
  */
 function optionalCustomFields(prefix: string): {
   readonly customFields?: Readonly<Record<string, string>>;
-}
-function optionalCustomFields(prefix: string): {
-  readonly customFields?: Readonly<Record<string, string>>;
 } {
   const name = `${prefix}_JIRA_CUSTOM_FIELDS`;
   const raw = process.env[name];
