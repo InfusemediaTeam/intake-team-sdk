@@ -77,7 +77,7 @@ That tracks the default branch. Pin a release to a Git tag instead, which is
 what a project depending on it should do:
 
 ```
-npm install github:InfusemediaTeam/intake-team-sdk#v1.0.0
+npm install github:InfusemediaTeam/intake-team-sdk#v1.1.0
 ```
 
 Node 24 or newer, TypeScript, CommonJS output. `@modelcontextprotocol/sdk` and
