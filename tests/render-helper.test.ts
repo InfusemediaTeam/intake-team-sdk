@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { fieldValue, toIntakeDraft } from '../src/draft/draft.helper';
 import {
   bullets,
   compose,
+  customField,
   labelled,
   section,
 } from '../src/render/render.helper';
@@ -39,5 +41,64 @@ describe('render helpers', () => {
   it('composes nothing out of nothing', () => {
     assert.equal(compose([]), '');
     assert.equal(compose(['', '']), '');
+  });
+});
+
+describe('customField', () => {
+  const draft = toIntakeDraft({
+    draft: { fieldValues: { version: '  3.0  ', blank: '   ' } },
+  });
+
+  it('maps a value onto the id it is given', () => {
+    assert.deepEqual(
+      customField('customfield_14310', fieldValue(draft, 'version')),
+      { customfield_14310: '3.0' },
+    );
+  });
+
+  it('trims a value it is handed directly', () => {
+    assert.deepEqual(customField('customfield_14310', '  3.0 '), {
+      customfield_14310: '3.0',
+    });
+  });
+
+  it('omits a blank or missing answer rather than sending an empty value', () => {
+    assert.deepEqual(
+      customField('customfield_14310', fieldValue(draft, 'blank')),
+      {},
+    );
+    assert.deepEqual(
+      customField('customfield_14310', fieldValue(draft, 'missing')),
+      {},
+    );
+    assert.deepEqual(customField('customfield_14310', '   '), {});
+    assert.deepEqual(customField('customfield_14310', undefined), {});
+  });
+
+  it('omits a field this deployment has no id for', () => {
+    const fieldIds: Readonly<Record<string, string>> = {};
+
+    assert.deepEqual(customField(fieldIds.version, '3.0'), {});
+  });
+
+  it('spreads into a map holding only what was chosen', () => {
+    const fieldIds = {
+      version: 'customfield_14310',
+      environment: 'customfield_14311',
+    };
+    const chosen = toIntakeDraft({
+      draft: {
+        fieldValues: { version: '3.0', environment: 'Staging', notes: 'Prose' },
+        requester: { displayName: 'Ada' },
+      },
+    });
+
+    assert.deepEqual(
+      {
+        ...customField(fieldIds.version, fieldValue(chosen, 'version')),
+        ...customField(fieldIds.environment, fieldValue(chosen, 'environment')),
+      },
+      { customfield_14310: '3.0', customfield_14311: 'Staging' },
+    );
   });
 });

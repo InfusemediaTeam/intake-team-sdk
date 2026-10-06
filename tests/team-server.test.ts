@@ -9,6 +9,8 @@ import {
   RENDER_TICKET_TOOL,
   VALIDATE_DEFINITION_OF_READY_TOOL,
 } from '../src/contract/contract.constants';
+import { fieldValue } from '../src/draft/draft.helper';
+import { customField } from '../src/render/render.helper';
 import { createTeamServer } from '../src/team/team-server';
 import type { ITeamDefinition, ITeamTool } from '../src/team/team-definition';
 import {
@@ -168,6 +170,45 @@ describe('createTeamServer', () => {
         (result.structuredContent as { description: string }).description,
         /^## /,
       );
+      // Optional: a team that maps no answer onto a Jira field sends no key.
+      assert.equal(
+        'customFields' in (result.structuredContent as object),
+        false,
+      );
+
+      await client.close();
+    });
+
+    it("carries a draft's own custom field values to the host", async () => {
+      const client = await connect({
+        ...CONTRACT_ONLY,
+        render: (draft) => ({
+          description: 'Body',
+          customFields: {
+            ...customField('customfield_14310', fieldValue(draft, 'version')),
+          },
+        }),
+      });
+
+      const render = async (version: string): Promise<unknown> =>
+        (
+          await client.callTool({
+            name: RENDER_TICKET_TOOL,
+            arguments: {
+              draft: { ...EXAMPLE_DRAFT, fieldValues: { version } },
+            },
+          })
+        ).structuredContent;
+
+      // Two drafts, two values: the field follows the request, not the server.
+      assert.deepEqual(await render('2.0'), {
+        description: 'Body',
+        customFields: { customfield_14310: '2.0' },
+      });
+      assert.deepEqual(await render('3.0'), {
+        description: 'Body',
+        customFields: { customfield_14310: '3.0' },
+      });
 
       await client.close();
     });

@@ -47,10 +47,17 @@ export {
 export type { IEnumFieldMessages } from './readiness/readiness.report';
 export { ReadinessReport, readiness } from './readiness/readiness.report';
 
-export { bullets, compose, labelled, section } from './render/render.helper';
+export {
+  bullets,
+  compose,
+  customField,
+  labelled,
+  section,
+} from './render/render.helper';
 
 export type { IJiraMappingOptions } from './jira/jira-env';
 export {
+  jiraFieldIdsFromEnv,
   jiraMappingFromEnv,
   requiredEnv,
   requiredEnvList,

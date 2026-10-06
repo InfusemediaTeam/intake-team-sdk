@@ -1,3 +1,33 @@
+import { filled } from '../draft/draft.helper';
+
+/**
+ * One entry for `IRenderedTicket.customFields`, or nothing.
+ *
+ * Returned as an object to spread, so a field with no id configured or no
+ * answer is an absent key rather than a blank Jira value:
+ *
+ * ```ts
+ * customFields: {
+ *   ...customField(fieldIds.version, fieldValue(draft, 'version')),
+ * }
+ * ```
+ *
+ * Which answers become fields is the caller's choice, one call per field —
+ * nothing here maps a draft's values wholesale.
+ *
+ * @param fieldId A Jira custom field id, typically from `jiraFieldIdsFromEnv`;
+ * absent when this deployment maps no field.
+ * @param value This draft's value; trimmed, and blank read as absent.
+ */
+export function customField(
+  fieldId: string | undefined,
+  value: string | null | undefined,
+): Readonly<Record<string, string>> {
+  if (!fieldId || typeof value !== 'string' || !filled(value)) return {};
+
+  return { [fieldId]: value.trim() };
+}
+
 /** Markdown section, omitted entirely when it has no body. */
 export function section(heading: string, body: string | null): string {
   const trimmed = body?.trim();

@@ -65,6 +65,9 @@ export interface IJiraMappingOptions {
  * | `<PREFIX>_JIRA_ASSIGNEE_EMAIL` | no       | Account email to assign tickets to      |
  * | `<PREFIX>_JIRA_CUSTOM_FIELDS`  | no       | Comma-separated `customfield_<id>=value` |
  *
+ * `<PREFIX>_JIRA_FIELD_IDS` is read separately, by `jiraFieldIdsFromEnv`: its
+ * values are filled per draft, so it has no place in the descriptor.
+ *
  * @param prefix Upper-case team prefix, e.g. `EXAMPLE` for `EXAMPLE_JIRA_PROJECT`.
  * @throws If a required variable is absent or blank, naming the variable.
  */
@@ -213,41 +216,115 @@ function optionalCustomFields(prefix: string): {
 
   if (raw === undefined || raw.trim().length === 0) return {};
 
-  const customFields: Record<string, string> = {};
+  const customFields = readPairs(
+    name,
+    raw,
+    'id=value, e.g. customfield_10200=Ops',
+    (id, value) => {
+      if (!CUSTOM_FIELD_ID.test(id)) {
+        throw new Error(
+          `${name} id "${id}" must be a Jira custom field id, e.g. customfield_10200`,
+        );
+      }
+
+      if (value.length === 0) {
+        throw new Error(`${name} value for ${id} must not be blank`);
+      }
+    },
+  );
+
+  return { customFields };
+}
+
+/**
+ * `<PREFIX>_JIRA_FIELD_IDS`: which Jira custom field each of the team's own
+ * field keys fills, e.g. `version=customfield_14310`.
+ *
+ * The id is configuration for the same reason as everywhere else here — it is
+ * minted per Jira instance. The *value* is not: it is the requester's answer,
+ * so it is supplied per draft by `render`, through `IRenderedTicket.customFields`.
+ * That is the difference from `<PREFIX>_JIRA_CUSTOM_FIELDS`, whose values are
+ * fixed and land on every ticket.
+ *
+ * Mapping a key here does not put its answer on a ticket by itself: `render`
+ * decides which answers become fields, so a key nobody reads is inert.
+ *
+ * Kept out of the descriptor: a host needs only the resolved `id → value`, and
+ * what each id is filled from is the team's own business.
+ *
+ * Call it at module load, like `jiraMappingFromEnv`, so a malformed mapping
+ * stops the server starting. Absent or blank reads as an empty mapping.
+ *
+ * @param prefix Upper-case team prefix, e.g. `EXAMPLE` for `EXAMPLE_JIRA_FIELD_IDS`.
+ * @throws If an entry is not `key=id`, a key is blank, an id is not a custom
+ * field id, or a key is listed twice.
+ */
+export function jiraFieldIdsFromEnv(
+  prefix: string,
+): Readonly<Record<string, string>> {
+  const name = `${prefix}_JIRA_FIELD_IDS`;
+  const raw = process.env[name];
+
+  if (raw === undefined || raw.trim().length === 0) return {};
+
+  return readPairs(
+    name,
+    raw,
+    'key=id, e.g. version=customfield_14310',
+    (key, id) => {
+      if (key.length === 0) {
+        throw new Error(`${name} entry for ${id} must name a field key`);
+      }
+
+      if (!CUSTOM_FIELD_ID.test(id)) {
+        throw new Error(
+          `${name} id "${id}" for ${key} must be a Jira custom field id, e.g. customfield_14310`,
+        );
+      }
+    },
+  );
+}
+
+/**
+ * A comma-separated list of `left=right` pairs, split on the first `=` and
+ * trimmed, with `check` judging each pair before it is kept.
+ *
+ * @throws If an entry has no separator, `check` refuses a pair, or a left-hand
+ * side is listed twice.
+ */
+function readPairs(
+  name: string,
+  raw: string,
+  shape: string,
+  check: (left: string, right: string) => void,
+): Readonly<Record<string, string>> {
+  // A Map rather than an object literal: a field key is free text, and `in` on
+  // a plain object would call `toString` a duplicate of itself.
+  const pairs = new Map<string, string>();
 
   for (const entry of splitList(raw)) {
     const separator = entry.indexOf(PAIR_SEPARATOR);
 
     if (separator === -1) {
-      throw new Error(
-        `${name} entry "${entry}" must be id=value, e.g. customfield_10200=Ops`,
-      );
+      throw new Error(`${name} entry "${entry}" must be ${shape}`);
     }
 
-    const id = entry.slice(0, separator).trim();
-    const value = entry.slice(separator + 1).trim();
+    const left = entry.slice(0, separator).trim();
+    const right = entry.slice(separator + 1).trim();
 
-    if (!CUSTOM_FIELD_ID.test(id)) {
-      throw new Error(
-        `${name} id "${id}" must be a Jira custom field id, e.g. customfield_10200`,
-      );
+    check(left, right);
+
+    // Refused rather than last-wins: a repeated entry is a mistake in the
+    // deployment, and silently keeping one of the two puts whichever was not
+    // meant onto every ticket this team files.
+    if (pairs.has(left)) {
+      throw new Error(`${name} lists ${left} more than once`);
     }
 
-    if (value.length === 0) {
-      throw new Error(`${name} value for ${id} must not be blank`);
-    }
-
-    // Refused rather than last-wins: a repeated id is a mistake in the
-    // deployment, and silently keeping one of the two values puts whichever
-    // was not meant onto every ticket this team files.
-    if (id in customFields) {
-      throw new Error(`${name} lists ${id} more than once`);
-    }
-
-    customFields[id] = value;
+    pairs.set(left, right);
   }
 
-  return { customFields };
+  return Object.fromEntries(pairs);
 }
 
 /** Blank entries dropped, so a trailing comma is not a nameless label. */
