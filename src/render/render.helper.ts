@@ -23,7 +23,10 @@ export function customField(
   fieldId: string | undefined,
   value: string | null | undefined,
 ): Readonly<Record<string, string>> {
-  if (!fieldId || typeof value !== 'string' || !filled(value)) return {};
+  // `typeof` rather than truthiness: an unconfigured key such as `constructor`
+  // reads an inherited function off the mapping, not `undefined`.
+  if (typeof fieldId !== 'string' || fieldId.length === 0) return {};
+  if (typeof value !== 'string' || !filled(value)) return {};
 
   return { [fieldId]: value.trim() };
 }

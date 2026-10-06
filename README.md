@@ -306,7 +306,8 @@ the requester's answer — a version, a repository — is mapped differently:
 `jiraFieldIdsFromEnv(prefix)` reads the variable at module load and is not part
 of the descriptor — a host only needs the resolved id and value. It splits each
 entry at the first `=`, and refuses a blank key, an id that is not
-`customfield_<digits>` and a repeated key, so a bad mapping stops startup.
+`customfield_<digits>`, a repeated key and an id mapped from two keys, so a bad
+mapping stops startup.
 
 ```ts
 const fieldIds = jiraFieldIdsFromEnv('EXAMPLE'); // { version: 'customfield_14310' }

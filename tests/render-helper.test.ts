@@ -81,6 +81,18 @@ describe('customField', () => {
     assert.deepEqual(customField(fieldIds.version, '3.0'), {});
   });
 
+  it('omits an unconfigured key that names an inherited property', () => {
+    const fieldIds: Readonly<Record<string, string>> = {
+      version: 'customfield_14310',
+    };
+
+    // Read by a key held as a string, as a caller looping over its own field
+    // keys would; the type says `string`, the value is `Object`.
+    const key: string = 'constructor';
+
+    assert.deepEqual(customField(fieldIds[key], '3.0'), {});
+  });
+
   it('spreads into a map holding only what was chosen', () => {
     const fieldIds = {
       version: 'customfield_14310',

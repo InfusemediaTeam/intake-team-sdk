@@ -257,7 +257,7 @@ function optionalCustomFields(prefix: string): {
  *
  * @param prefix Upper-case team prefix, e.g. `EXAMPLE` for `EXAMPLE_JIRA_FIELD_IDS`.
  * @throws If an entry is not `key=id`, a key is blank, an id is not a custom
- * field id, or a key is listed twice.
+ * field id, a key is listed twice, or an id is mapped from two keys.
  */
 export function jiraFieldIdsFromEnv(
   prefix: string,
@@ -267,7 +267,7 @@ export function jiraFieldIdsFromEnv(
 
   if (raw === undefined || raw.trim().length === 0) return {};
 
-  return readPairs(
+  const fieldIds = readPairs(
     name,
     raw,
     'key=id, e.g. version=customfield_14310',
@@ -283,6 +283,22 @@ export function jiraFieldIdsFromEnv(
       }
     },
   );
+
+  // Refused for the same reason as a repeated key: two answers filling one
+  // field means whichever `render` spreads last silently wins.
+  const keysById = new Map<string, string>();
+
+  for (const [key, id] of Object.entries(fieldIds)) {
+    const earlier = keysById.get(id);
+
+    if (earlier !== undefined) {
+      throw new Error(`${name} maps ${id} to both ${earlier} and ${key}`);
+    }
+
+    keysById.set(id, key);
+  }
+
+  return fieldIds;
 }
 
 /**
