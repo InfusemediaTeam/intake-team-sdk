@@ -93,6 +93,50 @@ describe('customField', () => {
     assert.deepEqual(customField(fieldIds[key], '3.0'), {});
   });
 
+  it('keeps a value of exactly the host limit', () => {
+    const atLimit = 'a'.repeat(500);
+
+    assert.deepEqual(customField('customfield_14310', atLimit), {
+      customfield_14310: atLimit,
+    });
+  });
+
+  it('omits a value over the host limit rather than truncating it', () => {
+    assert.deepEqual(customField('customfield_14310', 'a'.repeat(501)), {});
+  });
+
+  it('measures the limit after trimming', () => {
+    const atLimit = 'a'.repeat(500);
+
+    assert.deepEqual(customField('customfield_14310', `  ${atLimit}  `), {
+      customfield_14310: atLimit,
+    });
+  });
+
+  it('refuses an id that is not a Jira custom field id', () => {
+    // The easy mistake is passing the team's own field key instead of its id.
+    const refused: readonly string[] = [
+      'version',
+      '14310',
+      'customfield_',
+      'customfield_abc',
+    ];
+
+    refused.forEach((fieldId) => {
+      assert.throws(
+        () => customField(fieldId, '3.0'),
+        { message: /must be a Jira custom field id/ },
+        `expected ${fieldId} to be refused`,
+      );
+    });
+  });
+
+  it('refuses a bad id even when the draft leaves the field blank', () => {
+    assert.throws(() => customField('version', undefined), {
+      message: /customField id "version"/,
+    });
+  });
+
   it('spreads into a map holding only what was chosen', () => {
     const fieldIds = {
       version: 'customfield_14310',

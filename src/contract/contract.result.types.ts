@@ -29,6 +29,9 @@ export interface IRenderedTicket {
    * that maps no answer onto a Jira field says nothing here, and its tickets are
    * created exactly as before. Strings only: a field whose Jira value is
    * structured — a select, a user picker — cannot be expressed here.
+   *
+   * Each value is at most 500 characters, the host's current validation limit.
+   * `customField()` leaves a longer answer out rather than truncating it.
    */
   readonly customFields?: Readonly<Record<string, string>>;
 }

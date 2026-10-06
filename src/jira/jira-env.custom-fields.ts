@@ -5,7 +5,7 @@ import { readPairs } from './jira-env.helper';
  * issue type id is: the easy mistake is configuring the field's *name*, and a
  * board answers that with a rejection that names nothing useful.
  */
-const CUSTOM_FIELD_ID = /^customfield_\d+$/;
+export const CUSTOM_FIELD_ID = /^customfield_\d+$/;
 
 /**
  * `<PREFIX>_JIRA_CUSTOM_FIELDS` configures Jira custom fields required by this team.

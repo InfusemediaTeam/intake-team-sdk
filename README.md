@@ -326,6 +326,15 @@ blank, so an unanswered field is left off the ticket rather than sent empty. A
 host is expected to apply the descriptor's fixed `customFields` first and a
 draft's own on top.
 
+`customField` throws when it is given an id that is not `customfield_<digits>`
+— a field key such as `version` passed by mistake — since that is a bug in the
+team's code or configuration, not something a requester can fix.
+
+**Value limit:** each rendered custom field value is at most 500 characters, the
+host's current validation limit. `customField` leaves a longer answer off the
+ticket rather than truncating it; the full answer can still appear in the
+description.
+
 **Limitation:** this contract currently supports string custom-field values.
 Jira fields that require structured values (for example select, user-picker,
 multi-select, or other non-string shapes) are not supported by this contract
