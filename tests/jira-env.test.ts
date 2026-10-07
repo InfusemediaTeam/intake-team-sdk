@@ -309,6 +309,27 @@ describe('jiraMappingFromEnv', () => {
       });
     });
 
+    it('keeps its own wording for each refusal', () => {
+      const cases: readonly (readonly [string, RegExp])[] = [
+        ['customfield_10200', /entry "customfield_10200" must be id=value/],
+        ['Department=Ops', /id "Department" must be a Jira custom field id/],
+        [
+          'customfield_10200= ',
+          /value for customfield_10200 must not be blank/,
+        ],
+        [
+          'customfield_10200=Ops,customfield_10200=Sales',
+          /lists customfield_10200 more than once/,
+        ],
+      ];
+
+      cases.forEach(([entry, message]) => {
+        given(complete({ [`${PREFIX}_JIRA_CUSTOM_FIELDS`]: entry }));
+
+        assert.throws(() => jiraMappingFromEnv(PREFIX, OPTIONS), { message });
+      });
+    });
+
     it('refuses the same id twice rather than picking one of the values', () => {
       given(
         complete({

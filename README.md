@@ -20,8 +20,8 @@ It knows nothing about any particular department.
 | Authentication | Bearer-token checking on the HTTP transport, and `isBearerAuthorized` on its own                                                                                                      |
 | Drafts         | `toIntakeDraft` (tolerant parsing of a tool call's arguments), `filled`, `fieldValue`, `draftProse`, `includesAny`                                                                    |
 | Readiness      | `readiness(draft)` — a chainable report that collects blockers and warnings                                                                                                           |
-| Rendering      | `section`, `bullets`, `labelled`, `compose` for a markdown ticket body                                                                                                                |
-| Configuration  | `jiraMappingFromEnv(prefix, { issueType })`, `requiredEnv`, `requiredEnvList`                                                                                                         |
+| Rendering      | `section`, `bullets`, `labelled`, `compose` for a markdown ticket body; `customField` for a per-draft Jira custom field                                                               |
+| Configuration  | `jiraMappingFromEnv(prefix, { issueType })`, `jiraFieldIdsFromEnv(prefix)`, `requiredEnv`, `requiredEnvList`                                                                          |
 
 ## What it does not provide
 
@@ -42,11 +42,11 @@ itself and is expected **not** to expose them to a model: a model able to call
 its own readiness check can pass itself, and one able to render its own ticket
 body can put anything on a board.
 
-| Tool                                  | Returns                                                      |
-| ------------------------------------- | ------------------------------------------------------------ |
-| `intake_get_team_descriptor`          | Identity, Jira mapping, fields, and readiness notes          |
-| `intake_validate_definition_of_ready` | `{ ready, blockers[], warnings[] }` for one draft            |
-| `intake_render_ticket`                | `{ description, summary? }` in the department's own template |
+| Tool                                  | Returns                                                  |
+| ------------------------------------- | -------------------------------------------------------- |
+| `intake_get_team_descriptor`          | Identity, Jira mapping, fields, and readiness notes      |
+| `intake_validate_definition_of_ready` | `{ ready, blockers[], warnings[] }` for one draft        |
+| `intake_render_ticket`                | `{ description, summary?, customFields? }` for one draft |
 
 A department may publish **other** tools for the host's assistant to call — a
 reference table, a classification guide. Declare them `readOnly: true`; a host
@@ -77,7 +77,7 @@ That tracks the default branch. Pin a release to a Git tag instead, which is
 what a project depending on it should do:
 
 ```
-npm install github:InfusemediaTeam/intake-team-sdk#v1.1.0
+npm install github:InfusemediaTeam/intake-team-sdk#v1.2.0
 ```
 
 Node 24 or newer, TypeScript, CommonJS output. `@modelcontextprotocol/sdk` and
@@ -273,6 +273,7 @@ the department's own.
 | `<PREFIX>_JIRA_ISSUE_TYPE_ID`  | no       | Numeric issue type id; blank inherits the host's default         |
 | `<PREFIX>_JIRA_ASSIGNEE_EMAIL` | no       | Account email to assign tickets to; blank leaves them unassigned |
 | `<PREFIX>_JIRA_CUSTOM_FIELDS`  | no       | Comma-separated `customfield_<id>=value`; blank sets none        |
+| `<PREFIX>_JIRA_FIELD_IDS`      | no       | Comma-separated `fieldKey=customfield_<id>`; blank maps none     |
 
 `<PREFIX>_JIRA_CUSTOM_FIELDS` is read as pairs separated by commas —
 `customfield_10200=Ops,customfield_10201=Q3` — with an id taken from its value
@@ -287,6 +288,57 @@ route them somewhere wrong and look healthy doing it.
 
 The prefix is also the isolation mechanism: a server reads its own variables and
 nothing else, so it cannot route onto a board it was not configured for.
+
+### Per-request custom fields
+
+`<PREFIX>_JIRA_CUSTOM_FIELDS` holds _fixed_ values: they are part of the
+descriptor and land on every ticket the department files. A field whose value is
+the requester's answer — a version, a repository — is mapped differently:
+
+- `<PREFIX>_JIRA_FIELD_IDS` maps one of the department's own field keys to a
+  Jira custom field id, e.g. `version=customfield_14310`. Only the id is
+  configuration; it is minted per Jira instance, like every other id here.
+- The value is supplied per draft by `render`, in `IRenderedTicket.customFields`.
+- Nothing is mapped automatically. `render` names each field it puts on the
+  ticket; a configured key that `render` does not read is inert, and every other
+  answer stays in the description only.
+
+`jiraFieldIdsFromEnv(prefix)` reads the variable at module load and is not part
+of the descriptor — a host only needs the resolved id and value. It splits each
+entry at the first `=`, and refuses a blank key, an id that is not
+`customfield_<digits>`, a repeated key and an id mapped from two keys, so a bad
+mapping stops startup.
+
+```ts
+const fieldIds = jiraFieldIdsFromEnv('EXAMPLE'); // { version: 'customfield_14310' }
+
+render: (draft) => ({
+  description: compose([section('Version', fieldValue(draft, 'version'))]),
+  customFields: {
+    // version = "3.0" on this draft → customfield_14310 = "3.0"
+    ...customField(fieldIds.version, fieldValue(draft, 'version')),
+  },
+}),
+```
+
+`customField` returns nothing when the id is not configured or the answer is
+blank, so an unanswered field is left off the ticket rather than sent empty. A
+host is expected to apply the descriptor's fixed `customFields` first and a
+draft's own on top.
+
+`customField` throws when it is given an id that is not `customfield_<digits>`
+— a field key such as `version` passed by mistake — since that is a bug in the
+team's code or configuration, not something a requester can fix.
+
+**Value limit:** each rendered custom field value is at most 500 characters, the
+host's current validation limit. `customField` leaves a longer answer off the
+ticket rather than truncating it; the full answer can still appear in the
+description.
+
+**Limitation:** this contract currently supports string custom-field values.
+Jira fields that require structured values (for example select, user-picker,
+multi-select, or other non-string shapes) are not supported by this contract
+yet.
 
 ## Working on the SDK
 

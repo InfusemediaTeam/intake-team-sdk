@@ -21,4 +21,17 @@ export interface IRenderedTicket {
   readonly description: string;
   /** Overrides the host's summary when the team wants its own convention. */
   readonly summary?: string;
+  /**
+   * Jira custom field id → value for *this* draft, e.g. `customfield_14310`.
+   *
+   * The per-request counterpart of the descriptor's `jira.customFields`, which
+   * holds values fixed for every ticket a team files. Optional because a team
+   * that maps no answer onto a Jira field says nothing here, and its tickets are
+   * created exactly as before. Strings only: a field whose Jira value is
+   * structured — a select, a user picker — cannot be expressed here.
+   *
+   * Each value is at most 500 characters, the host's current validation limit.
+   * `customField()` leaves a longer answer out rather than truncating it.
+   */
+  readonly customFields?: Readonly<Record<string, string>>;
 }
