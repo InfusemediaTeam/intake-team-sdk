@@ -17,6 +17,22 @@ const CUSTOM_FIELD_VALUE_MAX_LENGTH = 500;
 const CUSTOM_FIELD_JSON_MAX_LENGTH = 10_000;
 
 /**
+ * The deepest structured value a host currently accepts, counting each list or
+ * object as one level. Deeper, the value is left off like a long one is.
+ */
+const CUSTOM_FIELD_JSON_MAX_DEPTH = 32;
+
+function nestedDeeperThan(value: JiraFieldValue, depth: number): boolean {
+  if (typeof value !== 'object' || value === null) return false;
+
+  if (depth === 0) return true;
+
+  return Object.values(value).some(
+    (child) => child !== null && nestedDeeperThan(child, depth - 1),
+  );
+}
+
+/**
  * One entry for `IRenderedTicket.customFields`, or nothing.
  *
  * Returned as an object to spread, so a field with no id configured or no
@@ -41,7 +57,7 @@ const CUSTOM_FIELD_JSON_MAX_LENGTH = 10_000;
  * @param value This draft's value. A string is trimmed, and blank or longer
  * than 500 characters reads as absent; so do `null`, a number that is not
  * finite, an empty list or object, and a structured value longer than 10 000
- * characters as JSON.
+ * characters as JSON or nested more than 32 deep.
  * @throws If `fieldId` is given but is not `customfield_<digits>` — a mistake
  * in the team's code or configuration, not in the requester's answer.
  */
@@ -88,6 +104,8 @@ export function customField(
     if (Object.keys(value).length === 0) return {};
 
     if (JSON.stringify(value).length > CUSTOM_FIELD_JSON_MAX_LENGTH) return {};
+
+    if (nestedDeeperThan(value, CUSTOM_FIELD_JSON_MAX_DEPTH)) return {};
   }
 
   return { [fieldId]: value };

@@ -186,7 +186,7 @@ describe('customField', () => {
     };
 
     assert.equal(customField('customfield_40000', adf).customfield_40000, adf);
-    assert.deepEqual(adf.content[0].content[0].text, ' Occurs on all orders ');
+    assert.equal(adf.content[0].content[0].text, ' Occurs on all orders ');
   });
 
   it('omits null and an empty list or object rather than sending them', () => {
@@ -210,6 +210,25 @@ describe('customField', () => {
     const value = { value: 'a'.repeat(10_000 - 11) };
 
     assert.equal(JSON.stringify(value).length, 10_001);
+    assert.deepEqual(customField('customfield_40000', value), {});
+  });
+
+  it('keeps a structured value nested exactly 32 deep', () => {
+    let value: JiraFieldValue = 'x';
+
+    for (let level = 0; level < 32; level += 1) value = [value];
+
+    assert.equal(
+      customField('customfield_40000', value).customfield_40000,
+      value,
+    );
+  });
+
+  it('omits a structured value nested more than 32 deep', () => {
+    let value: JiraFieldValue = 'x';
+
+    for (let level = 0; level < 33; level += 1) value = { value };
+
     assert.deepEqual(customField('customfield_40000', value), {});
   });
 

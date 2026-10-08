@@ -77,7 +77,7 @@ That tracks the default branch. Pin a release to a Git tag instead, which is
 what a project depending on it should do:
 
 ```
-npm install github:InfusemediaTeam/intake-team-sdk#v1.2.0
+npm install github:InfusemediaTeam/intake-team-sdk#v1.3.0
 ```
 
 Node 24 or newer, TypeScript, CommonJS output. `@modelcontextprotocol/sdk` and
@@ -364,12 +364,12 @@ customFields: {
 trimmed or rewritten. It leaves out `null`, a number that is not finite (`NaN`
 has no JSON form) and an empty list or object, so an unset field is an absent
 key. It also leaves out a structured value longer than 10 000 characters as
-JSON, the host's current limit, as it does a long string. A string keeps the
-rules above. A value of the wrong shape fails the whole creation at Jira.
+JSON or nested more than 32 deep, the host's current limits, as it does a long
+string. A string keeps the rules above. A value of the wrong shape fails the
+whole creation at Jira.
 
 Only the top level is checked: a non-finite number nested inside a value, such
-as `{ value: NaN }`, is not left out and reaches Jira as `null`. The host also
-refuses a value nested more than 32 deep.
+as `{ value: NaN }`, is not left out and reaches Jira as `null`.
 
 **Rollout:** deploy the host first, then release SDK 1.3.0. A host older than
 that refuses every structured value.
