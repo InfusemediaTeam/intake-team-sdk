@@ -330,15 +330,52 @@ draft's own on top.
 — a field key such as `version` passed by mistake — since that is a bug in the
 team's code or configuration, not something a requester can fix.
 
-**Value limit:** each rendered custom field value is at most 500 characters, the
+**Value limit:** each rendered string value is at most 500 characters, the
 host's current validation limit. `customField` leaves a longer answer off the
 ticket rather than truncating it; the full answer can still appear in the
 description.
 
-**Limitation:** this contract currently supports string custom-field values.
-Jira fields that require structured values (for example select, user-picker,
-multi-select, or other non-string shapes) are not supported by this contract
-yet.
+### Structured custom field values
+
+A custom field value is any JSON the field takes (`JiraFieldValue`), not only a
+string. Which shape is right depends on how the field is configured on the
+board, so Jira — not the SDK or the host — decides whether a value fits.
+Common shapes, from [Jira's REST API examples](https://developer.atlassian.com/server/jira/platform/jira-rest-api-examples/)
+(user fields on Jira Cloud take an `accountId`, not a `name`):
+
+| Field                         | Value                                                        |
+| ----------------------------- | ------------------------------------------------------------ |
+| Text, URL, date, date-time    | `'Ops'`, `'2011-10-03'`, `'2011-10-19T10:29:29.908+1100'`    |
+| Number                        | `42.07`                                                      |
+| Select list, radio buttons    | `{ value: 'red' }`                                           |
+| Multi-select                  | `[{ value: 'red' }, { value: 'blue' }]`                      |
+| Cascading select              | `{ value: 'green', child: { value: 'blue' } }`               |
+| Group / multi-group picker    | `{ name: 'jira-developers' }` / `[{ name: … }]`              |
+| User / multi-user picker      | `{ accountId: '…' }` / `[{ accountId: '…' }]`                |
+| Multi-line text (REST API v3) | an ADF document, `{ type: 'doc', version: 1, content: […] }` |
+
+```ts
+customFields: {
+  ...customField(fieldIds.environment, { value: 'Staging' }),
+},
+```
+
+`customField` passes a structured value on exactly as given — nothing nested is
+trimmed or rewritten. It leaves out `null`, a number that is not finite (`NaN`
+has no JSON form) and an empty list or object, so an unset field is an absent
+key. It also leaves out a structured value longer than 10 000 characters as
+JSON, the host's current limit, as it does a long string. A string keeps the
+rules above. A value of the wrong shape fails the whole creation at Jira.
+
+Only the top level is checked: a non-finite number nested inside a value, such
+as `{ value: NaN }`, is not left out and reaches Jira as `null`. The host also
+refuses a value nested more than 32 deep.
+
+**Rollout:** deploy the host first, then release SDK 1.3.0. A host older than
+that refuses every structured value.
+
+Type a structured value as an object literal or a `type` alias: TypeScript does
+not let an `interface` stand in for `JiraFieldValue`'s index signature.
 
 ## Working on the SDK
 

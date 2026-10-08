@@ -26,6 +26,8 @@ export type {
   ITeamField,
   ITeamIdentity,
   ITeamJiraMapping,
+  JiraFieldValue,
+  JiraJsonValue,
   TeamFieldKind,
 } from './contract/contract.types';
 

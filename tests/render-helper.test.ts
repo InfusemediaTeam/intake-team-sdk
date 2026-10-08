@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { JiraFieldValue } from '../src/contract/contract.types';
 import { fieldValue, toIntakeDraft } from '../src/draft/draft.helper';
 import {
   bullets,
@@ -110,6 +111,111 @@ describe('customField', () => {
 
     assert.deepEqual(customField('customfield_14310', `  ${atLimit}  `), {
       customfield_14310: atLimit,
+    });
+  });
+
+  it('still types a string value as a string map', () => {
+    const typed: Readonly<Record<string, string>> = customField(
+      'customfield_14310',
+      '3.0',
+    );
+
+    assert.deepEqual(typed, { customfield_14310: '3.0' });
+  });
+
+  it('passes a finite number on unchanged', () => {
+    assert.deepEqual(customField('customfield_10010', 42.07), {
+      customfield_10010: 42.07,
+    });
+    assert.deepEqual(customField('customfield_10010', 0), {
+      customfield_10010: 0,
+    });
+  });
+
+  it('omits a number that has no JSON form', () => {
+    for (const value of [NaN, Infinity, -Infinity]) {
+      assert.deepEqual(customField('customfield_10010', value), {});
+    }
+  });
+
+  it('treats a date or date-time as the string it is', () => {
+    assert.deepEqual(customField('customfield_10002', ' 2011-10-03 '), {
+      customfield_10002: '2011-10-03',
+    });
+    assert.deepEqual(
+      customField('customfield_10003', '2011-10-19T10:29:29.908+1100'),
+      { customfield_10003: '2011-10-19T10:29:29.908+1100' },
+    );
+  });
+
+  it('passes a structured value on as the same object, untrimmed', () => {
+    const values: readonly JiraFieldValue[] = [
+      { value: ' red ' },
+      { value: 'green', child: { value: 'blue' } },
+      { name: 'jira-developers' },
+      { accountId: '5b10ac8d82e05b22cc7d4ef5' },
+      { key: 'JRADEV' },
+      [{ value: 'red' }, { value: 'blue' }],
+      [{ name: 'admins' }, { name: 'jira-developers' }],
+      [{ accountId: '5b10ac8d82e05b22cc7d4ef5' }],
+      [{ name: '1.0' }, { name: '1.1.1' }],
+    ];
+
+    for (const value of values) {
+      assert.equal(
+        customField('customfield_10001', value).customfield_10001,
+        value,
+      );
+    }
+
+    assert.deepEqual(customField('customfield_10012', { value: ' red ' }), {
+      customfield_10012: { value: ' red ' },
+    });
+  });
+
+  it('passes an ADF document on unchanged', () => {
+    const adf = {
+      type: 'doc',
+      version: 1,
+      content: [
+        {
+          type: 'paragraph',
+          content: [{ type: 'text', text: ' Occurs on all orders ' }],
+        },
+      ],
+    };
+
+    assert.equal(customField('customfield_40000', adf).customfield_40000, adf);
+    assert.deepEqual(adf.content[0].content[0].text, ' Occurs on all orders ');
+  });
+
+  it('omits null and an empty list or object rather than sending them', () => {
+    assert.deepEqual(customField('customfield_10008', null), {});
+    assert.deepEqual(customField('customfield_10008', []), {});
+    assert.deepEqual(customField('customfield_10008', {}), {});
+  });
+
+  it('keeps a structured value of exactly 10 000 characters as JSON', () => {
+    // `{"value":""}` is 12 characters of JSON around the string.
+    const value = { value: 'a'.repeat(10_000 - 12) };
+
+    assert.equal(JSON.stringify(value).length, 10_000);
+    assert.equal(
+      customField('customfield_40000', value).customfield_40000,
+      value,
+    );
+  });
+
+  it('omits a structured value longer than 10 000 characters as JSON', () => {
+    const value = { value: 'a'.repeat(10_000 - 11) };
+
+    assert.equal(JSON.stringify(value).length, 10_001);
+    assert.deepEqual(customField('customfield_40000', value), {});
+  });
+
+  it('refuses a bad id whatever the value is', () => {
+    assert.throws(() => customField('version', { value: 'Ops' }), {
+      message: /must be a Jira custom field id/,
     });
   });
 
