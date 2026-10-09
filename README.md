@@ -372,7 +372,11 @@ Only the top level is checked: a non-finite number nested inside a value, such
 as `{ value: NaN }`, is not left out and reaches Jira as `null`.
 
 **Rollout:** deploy the host first, then release SDK 1.3.0. A host older than
-that refuses every structured value.
+that refuses every structured value. On a rendered ticket that fails the one
+ticket; in the descriptor's `jira.customFields` it fails the descriptor, so the
+whole team is unavailable to requesters. The 10 000-character and depth-32
+limits are applied only by `customField`, to rendered-ticket values: the SDK
+does not check descriptor values against them.
 
 Type a structured value as an object literal or a `type` alias: TypeScript does
 not let an `interface` stand in for `JiraFieldValue`'s index signature.
