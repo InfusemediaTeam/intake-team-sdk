@@ -213,6 +213,44 @@ describe('createTeamServer', () => {
       await client.close();
     });
 
+    it('carries structured custom field values to the host unchanged', async () => {
+      const customFields = {
+        customfield_10010: 42.07,
+        customfield_10012: { value: ' red ' },
+        customfield_10008: [{ value: 'red' }, { value: 'blue' }],
+        customfield_10017: { accountId: '5b10ac8d82e05b22cc7d4ef5' },
+        customfield_40000: {
+          type: 'doc',
+          version: 1,
+          content: [
+            { type: 'paragraph', content: [{ type: 'text', text: 'Body' }] },
+          ],
+        },
+      };
+      const client = await connect({
+        ...CONTRACT_ONLY,
+        render: () => ({ description: 'Body', customFields }),
+      });
+
+      const result = await client.callTool({
+        name: RENDER_TICKET_TOOL,
+        arguments: { draft: EXAMPLE_DRAFT },
+      });
+      const [text] = result.content as { type: 'text'; text: string }[];
+
+      // Both channels a host may read: neither stringifies a value.
+      assert.deepEqual(result.structuredContent, {
+        description: 'Body',
+        customFields,
+      });
+      assert.deepEqual(JSON.parse(text.text), {
+        description: 'Body',
+        customFields,
+      });
+
+      await client.close();
+    });
+
     it("routes to a team's own tool", async () => {
       const client = await connect(EXAMPLE_TEAM);
 
