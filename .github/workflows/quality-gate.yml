@@ -1,0 +1,83 @@
+name: Quality Gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+  push:
+    branches: ['**']
+  workflow_dispatch:
+    inputs:
+      comparison_base_ref:
+        description: Required for a manual feature scan
+        required: false
+        type: string
+      comparison_base_sha:
+        description: Required for a manual feature scan
+        required: false
+        type: string
+      comparison_head_ref:
+        description: Required for a manual feature scan
+        required: false
+        type: string
+      comparison_head_sha:
+        description: Required for a manual feature scan
+        required: false
+        type: string
+
+concurrency:
+  group: quality-gate-${{ github.event.pull_request.number || github.ref_name }}
+  cancel-in-progress: ${{ (github.event.pull_request.head.ref || github.ref_name) != github.event.repository.default_branch }}
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: read
+
+jobs:
+  validate-pair:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Validate a manual feature pair
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+          REPOSITORY: ${{ github.repository }}
+          BASE_REF: ${{ inputs.comparison_base_ref }}
+          BASE_SHA: ${{ inputs.comparison_base_sha }}
+          HEAD_REF: ${{ inputs.comparison_head_ref }}
+          HEAD_SHA: ${{ inputs.comparison_head_sha }}
+        run: |
+          if [[ "$EVENT" != "workflow_dispatch" || "$REF" == "$DEFAULT_BRANCH" ]]; then
+            exit 0
+          fi
+          if [[ -z "$BASE_REF" || -z "$BASE_SHA" || -z "$HEAD_REF" || -z "$HEAD_SHA" ]]; then
+            echo "::error::A manual feature scan requires exact base and head refs and SHAs"
+            exit 1
+          fi
+          if [[ "$HEAD_REF" != "$REF" || "$HEAD_SHA" != "$SHA" ]]; then
+            echo "::error::The manual head must match the selected branch and commit — the branch moved since the pair was read, so ask again"
+            exit 1
+          fi
+          # Validate manual pairs against GitHub to prevent mislabeled comparison evidence.
+          pull_requests="$(gh api "repos/$REPOSITORY/pulls"             --method GET             -f state=open             -f head="$OWNER:$HEAD_REF"             -f base="$BASE_REF"             -f per_page=100)"
+          matching_pairs="$(jq             --arg base_sha "$BASE_SHA"             --arg head_sha "$HEAD_SHA"             '[.[] | select(.draft == false and .base.sha == $base_sha and .head.sha == $head_sha)] | length'             <<< "$pull_requests")"
+          if [[ "$matching_pairs" != "1" ]]; then
+            echo "::error::The manual base and head must identify one open, ready pull request"
+            exit 1
+          fi
+
+  quality-gate:
+    needs: [validate-pair]
+    if: ${{ (github.event_name == 'pull_request' && !github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'push' && github.ref_name == github.event.repository.default_branch) || github.event_name == 'workflow_dispatch' }}
+    uses: InfusemediaTeam/the-system/.github/workflows/quality-gate.yml@main
+    with:
+      checkout_ref: ${{ github.event.pull_request.head.sha || inputs.comparison_head_sha || github.sha }}
+      report_sha: ${{ github.event.pull_request.head.sha || inputs.comparison_head_sha || github.sha }}
+      report_ref_name: ${{ github.event.pull_request.head.ref || inputs.comparison_head_ref || github.ref_name }}
+      comparison_base_ref: ${{ github.event.pull_request.base.ref || inputs.comparison_base_ref }}
+      comparison_base_sha: ${{ github.event.pull_request.base.sha || inputs.comparison_base_sha }}
+    secrets: inherit
