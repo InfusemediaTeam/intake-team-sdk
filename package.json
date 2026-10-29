@@ -1,7 +1,7 @@
 {
   "name": "intake-team-sdk",
-  "version": "1.3.1",
-  "description": "Toolkit for building intake MCP servers: the wire contract, server creation, transports and generic draft, readiness, rendering and Jira-mapping helpers.",
+  "version": "2.0.0",
+  "description": "Toolkit for building intake MCP servers in JavaScript/TypeScript: the JSON Schema wire contract, server creation, transports, service-token authentication and generic draft, readiness and rendering helpers. Its source is in packages/js/; a Python SDK with the same contract lives in packages/python/.",
   "license": "MIT",
   "homepage": "https://github.com/InfusemediaTeam/intake-team-sdk#readme",
   "repository": {
@@ -14,20 +14,23 @@
   "engines": {
     "node": ">=24"
   },
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "packages/js/dist/index.js",
+  "types": "packages/js/dist/index.d.ts",
   "files": [
-    "dist",
+    "packages/js/dist",
+    "spec",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p packages/js/tsconfig.build.json",
     "prepare": "npm run build",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "eslint \"{src,tests}/**/*.ts\"",
-    "test": "tsc -p tsconfig.json && node --test \"dist-test/tests/**/*.test.js\"",
-    "prepublishOnly": "npm run build && npm run lint && npm test"
+    "typecheck": "tsc -p packages/js/tsconfig.json --noEmit",
+    "lint": "eslint \"packages/js/{src,tests}/**/*.ts\"",
+    "test": "tsc -p packages/js/tsconfig.json && node --test \"packages/js/dist-test/tests/**/*.test.js\"",
+    "prepublishOnly": "npm run build && npm run lint && npm test",
+    "generate": "node scripts/generate-contract.mjs",
+    "check:generated": "node scripts/generate-contract.mjs --check"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
@@ -37,6 +40,7 @@
     "@eslint/js": "^10.0.1",
     "@types/express": "^5.0.6",
     "@types/node": "^24.13.3",
+    "ajv": "^8.20.0",
     "eslint": "^10.9.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.6",

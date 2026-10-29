@@ -3,116 +3,147 @@
 A toolkit for building **intake MCP servers**: one [Model Context
 Protocol](https://modelcontextprotocol.io) server per department, each of which
 tells an intake host what its department asks for, whether a request is ready,
-and how its ticket should read.
+how its ticket reads — and then **creates the task itself**, wherever that
+department keeps its work.
 
-The SDK is the department-independent half of that. It knows the wire contract,
-how to publish it as an MCP server, how to serve it over stdio or streamable
-HTTP, and the handful of helpers every department was otherwise writing itself.
-It knows nothing about any particular department.
+The SDK is the department-independent half of that, in two languages built from
+one contract:
 
-## What it provides
+| Path               | What                                                                                                     |
+| ------------------ | -------------------------------------------------------------------------------------------------------- |
+| `spec/`            | The contract: JSON Schema (`intake-contract.schema.json`), tool list, fixtures                           |
+| `packages/js/`     | The JavaScript/TypeScript SDK's source, tests and TypeScript config                                      |
+| `packages/python/` | The Python SDK (`intake_team_sdk`) — see [packages/python/README.md](packages/python/README.md)          |
+| `scripts/`         | `generate-contract.mjs`, which generates both SDKs' contract code from `spec/`                           |
+| `package.json`     | The JavaScript SDK's npm manifest. It stays at the root because npm installs a Git dependency from there |
 
-| Area           | Exports                                                                                                                                                                               |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Contract       | `INTAKE_CONTRACT_VERSION`, the three reserved tool names, `CONTRACT_TOOL_NAMES`, and the types (`ITeamDescriptor`, `IIntakeDraft`, `IDefinitionOfReadyVerdict`, `IRenderedTicket`, …) |
-| Server         | `createTeamServer(definition)` — one `ITeamDefinition` published as an MCP server                                                                                                     |
-| Transports     | `runStdioTeamServer(definition)`, `runHttpTeamServer(definition, { port, authToken })`                                                                                                |
-| Authentication | Bearer-token checking on the HTTP transport, and `isBearerAuthorized` on its own                                                                                                      |
-| Drafts         | `toIntakeDraft` (tolerant parsing of a tool call's arguments), `filled`, `fieldValue`, `draftProse`, `includesAny`                                                                    |
-| Readiness      | `readiness(draft)` — a chainable report that collects blockers and warnings                                                                                                           |
-| Rendering      | `section`, `bullets`, `labelled`, `compose` for a markdown ticket body; `customField` for a per-draft Jira custom field                                                               |
-| Configuration  | `jiraMappingFromEnv(prefix, { issueType })`, `jiraFieldIdsFromEnv(prefix)`, `requiredEnv`, `requiredEnvList`                                                                          |
+It knows nothing about any particular department, and nothing about Jira.
+
+## What it provides (JavaScript/TypeScript)
+
+| Area           | Exports                                                                                                                                                       |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Contract       | `INTAKE_CONTRACT_VERSION` (`2.0`), the five tool names, `CONTRACT_TOOL_NAMES`, `CONTRACT_TOOL_PREFIX`, `READ_SCOPE`/`CREATE_SCOPE`, `TOOL_CONTRACTS` (each tool's input/output schema), and the generated types    |
+| Server         | `createTeamServer(definition, { caller })` — one `ITeamDefinition` published as an MCP server                                                                 |
+| Transports     | `runStdioTeamServer(definition)`, `runHttpTeamServer(definition, { port, auth })`                                                                             |
+| Authentication | HS256 service tokens: `verifyServiceToken`, `signServiceToken`, `taskIdsDigest`, `ServiceTokenError`, `serviceAuthFromEnv(prefix)`; enforced by the HTTP transport |
+| Tasks          | `TaskError(code, message, retryable = false)` for failures the requester should hear about                                                                            |
+| Drafts         | `toIntakeDraft` (tolerant parsing), `filled`, `fieldValue`, `draftProse`, `includesAny`                                                                       |
+| Readiness      | `readiness(draft)` — a chainable report that collects blockers and warnings                                                                                   |
+| Rendering      | `section`, `bullets`, `labelled`, `compose` for a markdown ticket body                                                                                        |
+| Configuration  | `requiredEnv`, `requiredEnvList`, `readPairs`                                                                                                                 |
 
 ## What it does not provide
 
-- **No department rules.** No fields, no readiness conditions, no ticket
-  templates, no keyword vocabularies, no issue-type or project defaults.
-- **No department registry.** The SDK never learns which departments exist; a
-  server serves exactly one, and the host decides which servers it talks to.
-- **No outbound calls.** It does not talk to Jira or to anything else. A
-  department declares _where_ its tickets go and _what they say_; the host is
-  what puts them there.
+- **No department rules.** No fields, readiness conditions, templates or
+  destinations.
+- **No task system.** The SDK never talks to Jira or anything else. A department
+  that keeps its work in Jira, or any other tracker, brings its own client.
 - **No configuration values.** Every environment variable it reads is one the
-  caller names, and it holds no defaults for URLs, tokens or credentials.
+  caller names; it holds no URLs, tokens or credentials.
 
 ## The contract
 
-A server publishes three tools whose names are reserved. A host calls them
-itself and is expected **not** to expose them to a model: a model able to call
-its own readiness check can pass itself, and one able to render its own ticket
-body can put anything on a board.
+`spec/intake-contract.schema.json` (JSON Schema draft-07) is the single source of
+truth. `spec/contract.json` lists the tools, which definition each takes and
+returns, and the service-token rules. `npm run generate` turns them into
+`packages/js/src/generated/contract.generated.ts` (TypeScript interfaces and
+per-tool schemas) and `packages/python/src/intake_team_sdk/_generated.py`
+(TypedDicts and the same
+schemas); both are committed, and `npm run check:generated` fails when either is
+stale. Do not edit either by hand: change `spec/` and run `npm run generate`.
+`spec/fixtures/` holds the values and tokens both SDKs' tests must judge
+identically.
 
-| Tool                                  | Returns                                                  |
-| ------------------------------------- | -------------------------------------------------------- |
-| `intake_get_team_descriptor`          | Identity, Jira mapping, fields, and readiness notes      |
-| `intake_validate_definition_of_ready` | `{ ready, blockers[], warnings[] }` for one draft        |
-| `intake_render_ticket`                | `{ description, summary?, customFields? }` for one draft |
+A server publishes these tools, with the schemas from `spec/` as each tool's
+`inputSchema` and `outputSchema`. The whole `intake_` prefix is reserved: a host
+calls these tools itself and must **never** expose them to a model.
 
-A department may publish **other** tools for the host's assistant to call — a
-reference table, a classification guide. Declare them `readOnly: true`; a host
-is expected to refuse to adapt a tool that does not.
+| Tool                                  | Takes                                       | Returns                                             | Required |
+| ------------------------------------- | ------------------------------------------- | --------------------------------------------------- | -------- |
+| `intake_get_team_descriptor`          | —                                           | identity, fields, readiness notes                   | yes      |
+| `intake_validate_definition_of_ready` | `{ draft }`                                 | `{ ready, blockers[], warnings[] }`                 | yes      |
+| `intake_render_ticket`                | `{ draft }`                                 | `{ description, summary? }` — the requester preview | yes      |
+| `intake_create_task`                  | `{ idempotencyKey, draft, requester }`      | `{ task: { id, displayKey, url, location } }`       | yes      |
+| `intake_get_task_status`              | `{ taskIds }` (1–50)                        | `{ statuses: [{ taskId, category, label, assignee, lastChangedAt }] }` | no |
 
-`createTeamServer` throws if one of them takes a reserved name, or if two take
-the same name as each other. Dispatch answers the contract names first, so such
-a tool would be published and then never reached — a failure a caller cannot see
-at runtime, so it stops startup instead.
+- `requester` is `{ userId, email }` (`email` a string or `null`, never absent), resolved by the host from its own records.
+  The draft itself only carries a display name and department.
+- `task.url` is an `http(s)` link or `null`; `task.location` says where it was
+  filed (a board, queue or label) or is `null`.
+- `category` is one of `todo`, `in_progress`, `done`; `label` is the
+  department's own wording. A status for an id the department does not know is
+  left out.
 
-Two conventions matter when writing rules:
+### Errors
 
-- **A blocker is what the requester is asked for.** It is surfaced in the
-  department's own words, so phrase it as an instruction, not an error code.
-- **A warning must never be a question.** Warnings do not block, so use them for
-  "this would help", not "this is needed".
+A failure is an MCP result with `isError: true` whose text content is the JSON
+`{ "error": { "code", "message", "retryable" } }` — never `structuredContent`,
+which a client validates against the success schema. Codes: `INVALID_INPUT`,
+`UNAUTHORIZED`, `FORBIDDEN`, `NOT_READY`, `REQUESTER_UNRESOLVED`,
+`DESTINATION_REJECTED`, `DESTINATION_UNAVAILABLE`, `INTERNAL`.
+
+Throw `TaskError` from your handlers to report one; its message must be safe to
+show a requester. Anything else thrown is logged to stderr (message only) and
+reported as `INTERNAL`, retryable, with a generic message.
+
+### Idempotency
+
+`idempotencyKey` is the same for every attempt at one request. **Your
+`createTask` must return the task it already created for a key it has seen**,
+from your own storage (for example, label each task `intake-id-<key>` in your
+tracker and search for that label before creating). The SDK also merges concurrent calls
+with the same requester and key inside one process, but only your storage can
+recognise a task created before a restart or by another replica.
 
 ## Installing
 
-The SDK is not published to npm. It is installed straight from its public
-GitHub repository:
+Both SDKs install straight from this public repository at a Git tag. Nothing is
+published to npm or PyPI.
+
+> **Not tagged yet:** the newest tag is `v1.3.1`, which is the 1.x contract.
+> Until `v2.0.0` is cut, the commands below fail; pin a commit (`#<sha>` for
+> npm, `@<sha>` for pip) instead.
+
+JavaScript/TypeScript — the source is in `packages/js/`, but the npm manifest
+stays at the repository root: npm installs a Git dependency from the root and
+has no way to install from a subdirectory. The root `package.json` builds
+`packages/js/` and points `main` and `types` at its output:
 
 ```
-npm install github:InfusemediaTeam/intake-team-sdk
+npm install git+https://github.com/InfusemediaTeam/intake-team-sdk.git#v2.0.0
 ```
 
-That tracks the default branch. Pin a release to a Git tag instead, which is
-what a project depending on it should do:
+npm builds it from source on install (`prepare`). Node 24 or newer;
+`@modelcontextprotocol/sdk` and `express` come with it.
+
+Python 3.11 or newer — the package lives in `packages/python/`:
 
 ```
-npm install github:InfusemediaTeam/intake-team-sdk#v1.3.1
+pip install "git+https://github.com/InfusemediaTeam/intake-team-sdk.git@v2.0.0#subdirectory=packages/python"
 ```
-
-Node 24 or newer, TypeScript, CommonJS output. `@modelcontextprotocol/sdk` and
-`express` come with it. There is no build step to run: npm builds the package
-from source on install.
 
 ## A minimal department server
-
-Two files. First the department — data plus two pure functions:
 
 ```ts
 // example.team.ts
 import {
   INTAKE_CONTRACT_VERSION,
+  TaskError,
   compose,
   fieldValue,
-  filled,
-  jiraMappingFromEnv,
   readiness,
   section,
 } from 'intake-team-sdk';
-import type { ITeamDefinition } from 'intake-team-sdk';
+import type { ITeamDefinition, ITaskReference } from 'intake-team-sdk';
 
-const SEVERITIES = ['Low', 'High'] as const;
+/** Stand-in storage; a real department uses its own task system. */
+const tasksByKey = new Map<string, ITaskReference>();
 
 export const EXAMPLE_TEAM: ITeamDefinition = {
   descriptor: {
     contractVersion: INTAKE_CONTRACT_VERSION,
-    team: {
-      key: 'EXAMPLE',
-      title: 'Example department',
-      subtitle: 'What this department does',
-    },
-    // Read from EXAMPLE_JIRA_PROJECT / EXAMPLE_JIRA_LABELS at module load.
-    jira: jiraMappingFromEnv('EXAMPLE', { issueType: 'Task' }),
+    team: { key: 'EXAMPLE', title: 'Example department', subtitle: 'What it does' },
     fields: [
       {
         key: 'affectedSystem',
@@ -121,55 +152,65 @@ export const EXAMPLE_TEAM: ITeamDefinition = {
         kind: 'text',
         required: true,
       },
-      {
-        key: 'severity',
-        label: 'Severity',
-        description: 'How badly this bites.',
-        kind: 'enum',
-        required: true,
-        options: SEVERITIES,
-      },
     ],
-    // Published so the host's assistant can ask up front, rather than the
-    // requester discovering the rule when they are refused.
-    readinessNotes: ['High severity requires a named approver.'],
+    readinessNotes: [],
   },
 
   validate: (draft) =>
     readiness(draft)
       .requireCore('title', 'The ticket needs a short title.')
-      .requireCore('whatNeeded', 'Describe what needs to be done.')
       .requireField('affectedSystem', 'Name the affected system.')
-      .requireEnumField('severity', SEVERITIES, {
-        missing: `State the severity — one of: ${SEVERITIES.join(', ')}.`,
-        invalid: (value) => `"${value}" is not a severity.`,
-      })
-      .blockWhen(
-        fieldValue(draft, 'severity') === 'High' &&
-          !filled(draft.core.approver),
-        'approver',
-        'High severity needs a named approver.',
-      )
       .verdict(),
 
   render: (draft) => ({
-    summary: draft.core.title ?? undefined,
     description: compose([
       section('What is needed', draft.core.whatNeeded),
       section('Affected system', fieldValue(draft, 'affectedSystem')),
-      section('Severity', fieldValue(draft, 'severity')),
-      section('Requested by', draft.requester.displayName),
     ]),
+  }),
+
+  // Called only after the draft passed `validate` again and the caller was
+  // authorized. Must be idempotent on `input.idempotencyKey`.
+  createTask: async (input) => {
+    const existing = tasksByKey.get(input.idempotencyKey);
+
+    if (existing) return { task: existing };
+    if (!input.requester.email) {
+      throw new TaskError('REQUESTER_UNRESOLVED', 'We could not identify you.');
+    }
+
+    const task: ITaskReference = {
+      id: String(tasksByKey.size + 1),
+      displayKey: `EX-${tasksByKey.size + 1}`,
+      url: null,
+      location: 'Example queue',
+    };
+
+    tasksByKey.set(input.idempotencyKey, task);
+
+    return { task };
+  },
+
+  // Optional: without it the host shows the status as unavailable.
+  getTaskStatus: async (taskIds) => ({
+    statuses: [...tasksByKey.values()]
+      .filter((task) => taskIds.includes(task.id))
+      .map((task) => ({
+        taskId: task.id,
+        category: 'todo' as const,
+        label: 'Open',
+        assignee: null,
+        lastChangedAt: null,
+      })),
   }),
 };
 ```
 
-Then the entry point, which is only a transport choice:
+The entry point is only a transport choice:
 
 ```ts
 // main.ts — stdio, for a host that spawns the server as a child process
 import { runStdioTeamServer } from 'intake-team-sdk';
-
 import { EXAMPLE_TEAM } from './example.team';
 
 void runStdioTeamServer(EXAMPLE_TEAM);
@@ -177,223 +218,127 @@ void runStdioTeamServer(EXAMPLE_TEAM);
 
 ```ts
 // main.ts — streamable HTTP, for a host that reaches the server over a network
-import { runHttpTeamServer } from 'intake-team-sdk';
-
+import { runHttpTeamServer, serviceAuthFromEnv } from 'intake-team-sdk';
 import { EXAMPLE_TEAM } from './example.team';
 
-runHttpTeamServer(EXAMPLE_TEAM, {
+const listener = runHttpTeamServer(EXAMPLE_TEAM, {
   port: Number(process.env.EXAMPLE_MCP_PORT ?? 3000),
-  authToken: process.env.EXAMPLE_MCP_TOKEN ?? '',
+  // EXAMPLE_MCP_JWT_SECRET, EXAMPLE_MCP_JWT_ISSUER, EXAMPLE_MCP_JWT_AUDIENCE
+  auth: serviceAuthFromEnv('EXAMPLE'),
 });
-```
-
-`runHttpTeamServer` serves `POST /mcp` behind an `Authorization: Bearer <token>`
-check and answers `GET /health` with the department key. A blank token throws
-rather than starting: an unauthenticated intake endpoint is reachable by anyone
-who can route to it, and the failure is silent. Both paths are overridable
-(`path`, `healthPath`).
-
-**Shutdown is yours.** It returns the `http.Server` and installs no signal
-handlers; nothing in the SDK ends the process. Close the listener as part of
-whatever shutdown your entry point already has:
-
-```ts
-const listener = runHttpTeamServer(EXAMPLE_TEAM, { port, authToken });
 
 process.once('SIGTERM', () => listener.close());
 ```
 
-Pass `handleSignals: true` to have it register that closer for `SIGINT` and
-`SIGTERM` itself. It is off by default, and even when on it only closes the
-listener — an embedding application has its own shutdown order, and a handler
-installed here would run beside it rather than within it.
+`runHttpTeamServer` serves `POST /mcp` and answers `GET /health` with the
+department key (both paths overridable). It is stateless, returns the
+`http.Server`, and installs no signal handlers unless you pass
+`handleSignals: true`. It listens on every interface (there is no host option,
+unlike the Python SDK, which defaults to `127.0.0.1`).
+
+## Service tokens and the requester
+
+Over HTTP every request must carry `Authorization: Bearer <jwt>`: an HS256 token
+the host signs per request with a secret it shares with **this department
+only**. The check runs before the body is parsed; any failure is a `401` with a
+JSON-RPC `Unauthorized` body, and the reason is not disclosed. Checked:
+
+- algorithm pinned to HS256 and the signature (constant-time);
+- `iss` and `aud` equal to your configured issuer and audience;
+- integer `exp` and `iat` within 30 seconds of clock tolerance, and a lifetime of
+  at most 300 seconds;
+- `jti` and `scope` present; `sub`, if present, non-empty; `task_ids_sha256`,
+  if present, a base64url SHA-256.
+
+Tokens are not single-use: no `jti` is remembered, so a token is accepted again
+until it expires. Keep the HTTP leg on TLS and token lifetimes short.
+
+The verified caller then authorizes each call: `intake_create_task` needs the
+`intake:create` scope, every other tool `intake:read`. **A create whose
+`requester.userId` differs from the token's `sub` (or whose token has no `sub`)
+is refused with `FORBIDDEN`**,
+so whatever wrote the arguments cannot file a task under someone else.
+
+**`intake_get_task_status` answers only the tasks the token was issued for.** The
+host knows whose task is whose, so it signs the requester as `sub` and the ids it
+found owned by them as `task_ids_sha256`: the base64url SHA-256 of the exact
+`taskIds` array it sends, as compact JSON (`taskIdsDigest` computes it). A token
+with no `sub`, no `task_ids_sha256`, or a digest that does not match the call's
+own `taskIds` is refused with `FORBIDDEN` before your `getTaskStatus` runs, so a
+token for discovery or a preview reads no task, and no id can be added to a call
+after signing. Your handler should still only look where your own tasks live
+(e.g. your own Jira project). The secret
+must be at least 32 characters; a shorter one, or a blank issuer or audience,
+stops the server starting.
+
+Over stdio there is no token: only the host that spawned the process can write
+to it, so every tool is allowed and `context.caller` is `null`.
+
+The host is expected to take `userId` from its own authenticated records, never
+from a model or a caller. Treat it as an identifier, not as permission to act
+for that user.
 
 ## The integration flow
 
-What a host does with a server, and where your code runs:
+1. **Discover** — the host calls `tools/list` and `intake_get_team_descriptor`.
+   A server without `intake_create_task` is not offered.
+2. **Interview** — the host collects a draft; your fields and readiness notes
+   shape what it asks.
+3. **Check and preview** — `intake_validate_definition_of_ready` and
+   `intake_render_ticket`, on every change. Keep both fast and free of network
+   calls: a host bounds them and treats an overrun as the server being down.
+4. **Create** — after the requester confirms, the host calls `intake_create_task`
+   once per attempt, with the request's stable idempotency key. The SDK checks
+   the caller, re-runs your `validate` (refusing with `NOT_READY` without calling
+   you), merges concurrent duplicates, calls your `createTask`, and checks the
+   reference you return.
+5. **Track** — `intake_get_task_status` with the ids you returned.
 
-1. **Connect and read the descriptor** — `intake_get_team_descriptor`. The host
-   learns the department's identity, its fields and its readiness notes.
-2. **Collect a request** — the host runs the conversation. Your fields and your
-   readiness notes shape what it asks for.
-3. **Check readiness** — `intake_validate_definition_of_ready` with the draft.
-   Your `validate` answers `{ ready, blockers, warnings }`. Expect to be asked
-   again whenever the draft changes, and at the moment a ticket is created.
-4. **Render** — `intake_render_ticket` with the same draft. Your `render`
-   returns the body, and optionally a summary in your own convention.
-5. **Create** — the host creates the ticket, on the board your descriptor named.
-
-Two expectations a host will hold you to, and the reason for each:
-
-- **`validate` and `render` must be fast and make no network calls.** A host
-  bounds every call it makes and treats an overrun as the server being
-  unhealthy — so a render that reached out would take your department offline
-  under load.
-- **In a stdio server, stdout is the protocol.** Write diagnostics to stderr;
-  one stray `console.log` desynchronises the connection. `runStdioTeamServer`
-  already respects this.
-
-Assume a host validates everything you return, field by field, and treats a
-malformed descriptor as the department being _unavailable_ rather than
-partially understood.
+In a stdio server stdout is the protocol: write diagnostics to stderr.
 
 ## Who implements what
 
-|                                                             | SDK | Department |
-| ----------------------------------------------------------- | --- | ---------- |
-| MCP server, `tools/list`, `tools/call` dispatch             | ✅  |            |
-| stdio and streamable HTTP transports, and starting them     | ✅  |            |
-| Closing the HTTP listener, and when the process ends        |     | ✅         |
-| Bearer-token authentication on HTTP                         | ✅  |            |
-| Parsing an incoming draft, surviving a malformed one        | ✅  |            |
-| Blocker/warning bookkeeping, enum and required-field checks | ✅  |            |
-| Markdown section/bullet/compose primitives                  | ✅  |            |
-| Reading `<PREFIX>_JIRA_*` into a mapping                    | ✅  |            |
-| Team identity, title, subtitle                              |     | ✅         |
-| The intake fields and their descriptions                    |     | ✅         |
-| The issue type, and the prefix its routing is read from     |     | ✅         |
-| Definition of Ready rules and their wording                 |     | ✅         |
-| Readiness notes published to the host                       |     | ✅         |
-| The ticket template                                         |     | ✅         |
-| Any extra read-only tools                                   |     | ✅         |
-| Which environment variables exist, and their values         |     | ✅         |
+|                                                                   | SDK | Department |
+| ----------------------------------------------------------------- | --- | ---------- |
+| MCP server, tool publishing and dispatch, schemas from `spec/`    | ✅  |            |
+| stdio and streamable HTTP transports                              | ✅  |            |
+| Service-token verification, scopes, requester/subject check       | ✅  |            |
+| Readiness re-check before creation; concurrent-duplicate merging  | ✅  |            |
+| Error results, and hiding unexpected errors                       | ✅  |            |
+| Draft parsing, readiness bookkeeping, markdown primitives         | ✅  |            |
+| Identity, fields, readiness rules, ticket template                |     | ✅         |
+| Creating the task — destination, formatting, notifications        |     | ✅         |
+| Idempotency across restarts, in its own storage                   |     | ✅         |
+| Status lookup and its wording                                     |     | ✅         |
+| Its own credentials and environment variables                     |     | ✅         |
 
-## Configuration convention
+## Migrating from 1.x
 
-A project key, a label and a field id belong to a Jira _instance_, not to a
-department: the same department points at different keys in a sandbox and in
-production. So `jiraMappingFromEnv` reads them from the environment under a
-prefix the department chooses, and the descriptor keeps only what is genuinely
-the department's own.
+2.0 is a breaking release; the host must accept contract major 2 first.
 
-| Variable                       | Required | Shape                                                            |
-| ------------------------------ | -------- | ---------------------------------------------------------------- |
-| `<PREFIX>_JIRA_PROJECT`        | yes      | Project key                                                      |
-| `<PREFIX>_JIRA_LABELS`         | yes      | Comma-separated; the first is the routing label                  |
-| `<PREFIX>_JIRA_ISSUE_TYPE_ID`  | no       | Numeric issue type id; blank inherits the host's default         |
-| `<PREFIX>_JIRA_ASSIGNEE_EMAIL` | no       | Account email to assign tickets to; blank leaves them unassigned |
-| `<PREFIX>_JIRA_CUSTOM_FIELDS`  | no       | Comma-separated `customfield_<id>=value`; blank sets none        |
-| `<PREFIX>_JIRA_FIELD_IDS`      | no       | Comma-separated `fieldKey=customfield_<id>`; blank maps none     |
-
-`<PREFIX>_JIRA_CUSTOM_FIELDS` is read as pairs separated by commas —
-`customfield_10200=Ops,customfield_10201=Q3` — with an id taken from its value
-at the first `=`. A value may therefore contain `=` but not a comma. An id that
-is not `customfield_<digits>`, a blank value and a repeated id are refused at
-load rather than at the board.
-
-Call it at module load. A missing required variable then stops the server
-starting, and the host reports the department as unavailable — the honest
-outcome, since a server that started without knowing where its tickets go would
-route them somewhere wrong and look healthy doing it.
-
-The prefix is also the isolation mechanism: a server reads its own variables and
-nothing else, so it cannot route onto a board it was not configured for.
-
-### Per-request custom fields
-
-`<PREFIX>_JIRA_CUSTOM_FIELDS` holds _fixed_ values: they are part of the
-descriptor and land on every ticket the department files. A field whose value is
-the requester's answer — a version, a repository — is mapped differently:
-
-- `<PREFIX>_JIRA_FIELD_IDS` maps one of the department's own field keys to a
-  Jira custom field id, e.g. `version=customfield_14310`. Only the id is
-  configuration; it is minted per Jira instance, like every other id here.
-- The value is supplied per draft by `render`, in `IRenderedTicket.customFields`.
-- Nothing is mapped automatically. `render` names each field it puts on the
-  ticket; a configured key that `render` does not read is inert, and every other
-  answer stays in the description only.
-
-`jiraFieldIdsFromEnv(prefix)` reads the variable at module load and is not part
-of the descriptor — a host only needs the resolved id and value. It splits each
-entry at the first `=`, and refuses a blank key, an id that is not
-`customfield_<digits>`, a repeated key and an id mapped from two keys, so a bad
-mapping stops startup.
-
-```ts
-const fieldIds = jiraFieldIdsFromEnv('EXAMPLE'); // { version: 'customfield_14310' }
-
-render: (draft) => ({
-  description: compose([section('Version', fieldValue(draft, 'version'))]),
-  customFields: {
-    // version = "3.0" on this draft → customfield_14310 = "3.0"
-    ...customField(fieldIds.version, fieldValue(draft, 'version')),
-  },
-}),
-```
-
-`customField` returns nothing when the id is not configured or the answer is
-blank, so an unanswered field is left off the ticket rather than sent empty. A
-host is expected to apply the descriptor's fixed `customFields` first and a
-draft's own on top.
-
-`customField` throws when it is given an id that is not `customfield_<digits>`
-— a field key such as `version` passed by mistake — since that is a bug in the
-team's code or configuration, not something a requester can fix.
-
-**Value limit:** each rendered string value is at most 500 characters, the
-host's current validation limit. `customField` leaves a longer answer off the
-ticket rather than truncating it; the full answer can still appear in the
-description.
-
-### Structured custom field values
-
-A custom field value is any JSON the field takes (`JiraFieldValue`), not only a
-string. Which shape is right depends on how the field is configured on the
-board, so Jira — not the SDK or the host — decides whether a value fits.
-Common shapes, from [Jira's REST API examples](https://developer.atlassian.com/server/jira/platform/jira-rest-api-examples/)
-(user fields on Jira Cloud take an `accountId`, not a `name`):
-
-| Field                         | Value                                                        |
-| ----------------------------- | ------------------------------------------------------------ |
-| Text, URL, date, date-time    | `'Ops'`, `'2011-10-03'`, `'2011-10-19T10:29:29.908+1100'`    |
-| Number                        | `42.07`                                                      |
-| Select list, radio buttons    | `{ value: 'red' }`                                           |
-| Multi-select                  | `[{ value: 'red' }, { value: 'blue' }]`                      |
-| Cascading select              | `{ value: 'green', child: { value: 'blue' } }`               |
-| Group / multi-group picker    | `{ name: 'jira-developers' }` / `[{ name: … }]`              |
-| User / multi-user picker      | `{ accountId: '…' }` / `[{ accountId: '…' }]`                |
-| Multi-line text (REST API v3) | an ADF document, `{ type: 'doc', version: 1, content: […] }` |
-
-```ts
-customFields: {
-  ...customField(fieldIds.environment, { value: 'Staging' }),
-},
-```
-
-`customField` passes a structured value on exactly as given — nothing nested is
-trimmed or rewritten. It leaves out `null`, a number that is not finite (`NaN`
-has no JSON form) and an empty list or object, so an unset field is an absent
-key. It also leaves out a structured value longer than 10 000 characters as
-JSON or nested more than 32 deep, the host's current limits, as it does a long
-string. A string keeps the rules above. A value of the wrong shape fails the
-whole creation at Jira.
-
-Only the top level is checked: a non-finite number nested inside a value, such
-as `{ value: NaN }`, is not left out and reaches Jira as `null`.
-
-**Rollout:** deploy the host first, then release SDK 1.3.0. A host older than
-that refuses every structured value. On a rendered ticket that fails the one
-ticket; in the descriptor's `jira.customFields` it fails the descriptor, so the
-whole team is unavailable to requesters. The 10 000-character and depth-32
-limits are applied only by `customField`, to rendered-ticket values: the SDK
-does not check descriptor values against them.
-
-Type a structured value as an object literal or a `type` alias: TypeScript does
-not let an `interface` stand in for `JiraFieldValue`'s index signature.
+- Remove `jira` from the descriptor and `customFields` from `render`'s result.
+  Where tasks land is now decided inside `createTask`.
+- Implement `createTask` (required) and, ideally, `getTaskStatus`.
+- `jiraMappingFromEnv`, `jiraFieldIdsFromEnv` and `customField` are no longer in
+  the SDK; keep equivalents in your own package if you still use Jira.
+- `runHttpTeamServer` takes `auth: { secret, issuer, audience }` instead of
+  `authToken`, and `isBearerAuthorized` is gone: the host now sends a signed,
+  short-lived token rather than a static one.
+- Team tools may not start with `intake_`, and `execute` may return a promise.
 
 ## Working on the SDK
 
 ```
-npm run build       # tsconfig.build.json -> dist/, src only
+npm run generate         # spec/ -> packages/js/src/generated + packages/python/src/intake_team_sdk/_generated.py
+npm run check:generated  # fails when either generated file is stale
+npm run build            # packages/js/tsconfig.build.json -> packages/js/dist/, src only
 npm run typecheck
 npm run lint
-npm test            # tsconfig.json -> dist-test/, then node:test over it
+npm test                 # packages/js/tsconfig.json -> packages/js/dist-test/, then node:test over it
 ```
 
-Two configs on purpose: `tsconfig.build.json` compiles `src` alone into `dist/`,
-which is what `files` publishes, while `tsconfig.json` compiles `src` and
-`tests` into `dist-test/` for typechecking and the suite. Tests and fixtures
-therefore cannot reach the package.
+Python: see [packages/python/README.md](packages/python/README.md#tests). CI runs both on every
+pull request and push to `main` (`.github/workflows/ci.yml`).
 
 ## License
 

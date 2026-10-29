@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "intake-team-sdk"
+version = "2.0.0"
+description = "Toolkit for building intake MCP servers in Python: the JSON Schema wire contract, server creation, transports, service-token authentication and generic draft, readiness and rendering helpers. Same contract as the JavaScript SDK."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.30,<2",
+]
+
+[project.urls]
+Homepage = "https://github.com/InfusemediaTeam/intake-team-sdk#readme"
+Repository = "https://github.com/InfusemediaTeam/intake-team-sdk"
+Issues = "https://github.com/InfusemediaTeam/intake-team-sdk/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+intake_team_sdk = ["py.typed"]

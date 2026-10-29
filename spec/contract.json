@@ -1,0 +1,66 @@
+{
+  "contractVersion": "2.0",
+  "reservedToolPrefix": "intake_",
+  "scopes": {
+    "read": "intake:read",
+    "create": "intake:create"
+  },
+  "serviceToken": {
+    "algorithm": "HS256",
+    "minSecretLength": 32,
+    "maxLifetimeSeconds": 300,
+    "clockToleranceSeconds": 30
+  },
+  "tools": [
+    {
+      "name": "intake_get_team_descriptor",
+      "title": "Team descriptor",
+      "description": "This team's identity, intake fields and readiness rules.",
+      "input": "EmptyInput",
+      "output": "TeamDescriptor",
+      "scope": "intake:read",
+      "readOnly": true,
+      "required": true
+    },
+    {
+      "name": "intake_validate_definition_of_ready",
+      "title": "Definition of Ready",
+      "description": "Whether a draft meets this team's Definition of Ready.",
+      "input": "DraftInput",
+      "output": "ReadinessVerdict",
+      "scope": "intake:read",
+      "readOnly": true,
+      "required": true
+    },
+    {
+      "name": "intake_render_ticket",
+      "title": "Render ticket",
+      "description": "Renders the ticket body in this team's own template, for the requester to preview.",
+      "input": "DraftInput",
+      "output": "RenderedTicket",
+      "scope": "intake:read",
+      "readOnly": true,
+      "required": true
+    },
+    {
+      "name": "intake_create_task",
+      "title": "Create task",
+      "description": "Creates the task for a confirmed draft, wherever this team keeps its work. Idempotent per idempotencyKey. Called by the host only.",
+      "input": "CreateTaskInput",
+      "output": "CreateTaskResult",
+      "scope": "intake:create",
+      "readOnly": false,
+      "required": true
+    },
+    {
+      "name": "intake_get_task_status",
+      "title": "Task status",
+      "description": "The current state of tasks this team created.",
+      "input": "TaskStatusInput",
+      "output": "TaskStatusResult",
+      "scope": "intake:read",
+      "readOnly": true,
+      "required": false
+    }
+  ]
+}

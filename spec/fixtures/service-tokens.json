@@ -1,0 +1,251 @@
+{
+  "testSigningKey": "fixture-secret-0123456789-abcdefghij",
+  "otherTestSigningKey": "another-fixture-secret-9876543210-zyx",
+  "issuer": "example-host",
+  "audience": "qa",
+  "now": 1800000000000,
+  "baseHeader": {
+    "alg": "HS256",
+    "typ": "JWT"
+  },
+  "baseClaims": {
+    "iss": "example-host",
+    "aud": "qa",
+    "sub": "user-1",
+    "scope": "intake:read intake:create",
+    "iat": 1799999990,
+    "exp": 1800000050,
+    "jti": "token-1"
+  },
+  "pinnedSignature": {
+    "case": "valid with subject",
+    "signature": "STyfsx8LD0DTnFgUL0MQta8myMyZzoThcZUTBqJp6PQ"
+  },
+  "cases": [
+    {
+      "name": "valid with subject",
+      "valid": true,
+      "caller": {
+        "issuer": "example-host",
+        "subject": "user-1",
+        "taskIdsDigest": null,
+        "scopes": [
+          "intake:read",
+          "intake:create"
+        ],
+        "tokenId": "token-1",
+        "expiresAt": 1800000050
+      }
+    },
+    {
+      "name": "valid without subject",
+      "omitClaims": [
+        "sub"
+      ],
+      "claims": {
+        "scope": "intake:read"
+      },
+      "valid": true,
+      "caller": {
+        "issuer": "example-host",
+        "subject": null,
+        "taskIdsDigest": null,
+        "scopes": [
+          "intake:read"
+        ],
+        "tokenId": "token-1",
+        "expiresAt": 1800000050
+      }
+    },
+    {
+      "name": "valid within clock tolerance after expiry",
+      "claims": {
+        "iat": 1799999930,
+        "exp": 1799999990
+      },
+      "valid": true,
+      "caller": {
+        "issuer": "example-host",
+        "subject": "user-1",
+        "taskIdsDigest": null,
+        "scopes": [
+          "intake:read",
+          "intake:create"
+        ],
+        "tokenId": "token-1",
+        "expiresAt": 1799999990
+      }
+    },
+    {
+      "name": "signed with another secret",
+      "signingKey": "otherTestSigningKey",
+      "valid": false
+    },
+    {
+      "name": "alg none",
+      "header": {
+        "alg": "none"
+      },
+      "signature": "empty",
+      "valid": false
+    },
+    {
+      "name": "alg HS512 header",
+      "header": {
+        "alg": "HS512"
+      },
+      "valid": false
+    },
+    {
+      "name": "tampered claims",
+      "claims": {
+        "sub": "user-2"
+      },
+      "signatureOf": "valid with subject",
+      "valid": false
+    },
+    {
+      "name": "wrong audience",
+      "claims": {
+        "aud": "another-team"
+      },
+      "valid": false
+    },
+    {
+      "name": "wrong issuer",
+      "claims": {
+        "iss": "someone"
+      },
+      "valid": false
+    },
+    {
+      "name": "expired beyond tolerance",
+      "claims": {
+        "iat": 1799999900,
+        "exp": 1799999969
+      },
+      "valid": false
+    },
+    {
+      "name": "issued in the future",
+      "claims": {
+        "iat": 1800000060,
+        "exp": 1800000120
+      },
+      "valid": false
+    },
+    {
+      "name": "lifetime longer than allowed",
+      "claims": {
+        "exp": 1800000600
+      },
+      "valid": false
+    },
+    {
+      "name": "missing jti",
+      "omitClaims": [
+        "jti"
+      ],
+      "valid": false
+    },
+    {
+      "name": "missing scope",
+      "omitClaims": [
+        "scope"
+      ],
+      "valid": false
+    },
+    {
+      "name": "non-integer exp",
+      "claims": {
+        "exp": "soon"
+      },
+      "valid": false
+    },
+    {
+      "name": "blank subject",
+      "claims": {
+        "sub": ""
+      },
+      "valid": false
+    },
+    {
+      "name": "two segments",
+      "signature": "omitted",
+      "valid": false
+    },
+    {
+      "name": "not base64 json",
+      "rawToken": "abc.def.ghi",
+      "valid": false
+    },
+    {
+      "name": "valid with a task binding",
+      "claims": {
+        "scope": "intake:read",
+        "task_ids_sha256": "vgNAui43sMHGGvA3EppVqm-ac0EmX3xUX9k501T9lv8"
+      },
+      "valid": true,
+      "caller": {
+        "issuer": "example-host",
+        "subject": "user-1",
+        "taskIdsDigest": "vgNAui43sMHGGvA3EppVqm-ac0EmX3xUX9k501T9lv8",
+        "scopes": [
+          "intake:read"
+        ],
+        "tokenId": "token-1",
+        "expiresAt": 1800000050
+      }
+    },
+    {
+      "name": "malformed task binding",
+      "claims": {
+        "scope": "intake:read",
+        "task_ids_sha256": "not-a-digest"
+      },
+      "valid": false
+    },
+    {
+      "name": "non-string task binding",
+      "claims": {
+        "scope": "intake:read",
+        "task_ids_sha256": [
+          "PROJ-1"
+        ]
+      },
+      "valid": false
+    }
+  ],
+  "taskIdsDigests": [
+    {
+      "taskIds": [
+        "PROJ-1",
+        "PROJ-2"
+      ],
+      "digest": "vgNAui43sMHGGvA3EppVqm-ac0EmX3xUX9k501T9lv8"
+    },
+    {
+      "taskIds": [
+        "PROJ-2",
+        "PROJ-1"
+      ],
+      "digest": "LlNRU9BpCQeW2gCdgg-y5AQU8GZKqx0Xkh_Ud2bDsVE"
+    },
+    {
+      "taskIds": [
+        "QA-123"
+      ],
+      "digest": "wcC7i0Qhd3crGMmY5o65CDPO72sZrg4UT_7SpyuQR1g"
+    },
+    {
+      "taskIds": [
+        "a \"quoted\" id",
+        "backslash",
+        "tab\there",
+        "ünïcødé ✓",
+        "emoji 🎫"
+      ],
+      "digest": "u5z59a0dtGsurkUrOY4QfEb3B3Y4bEki5reY8orqVaM"
+    }
+  ]
+}
