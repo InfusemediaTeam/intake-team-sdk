@@ -6,7 +6,7 @@ import { describe, it } from 'node:test';
 import Ajv from 'ajv';
 
 import { CONTRACT_TOOL_NAMES } from '../src/contract/contract.constants';
-import { TOOL_CONTRACTS } from '../src/generated/contract.generated';
+import { SCOPES, TOOL_CONTRACTS } from '../src/generated/contract.generated';
 
 /**
  * `spec/` is the contract; these check that it is self-consistent and that the
@@ -61,6 +61,14 @@ describe('generated tool contracts', () => {
       TOOL_CONTRACTS.map((tool) => tool.name),
       [...CONTRACT_TOOL_NAMES],
     );
+  });
+
+  it('give every tool a scope the contract defines', () => {
+    const scopes: readonly string[] = Object.values(SCOPES);
+
+    for (const tool of TOOL_CONTRACTS) {
+      assert.ok(scopes.includes(tool.scope), `${tool.name}: ${tool.scope}`);
+    }
   });
 
   for (const tool of TOOL_CONTRACTS) {

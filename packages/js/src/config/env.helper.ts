@@ -6,7 +6,7 @@
 /** Separates entries in a list-valued variable, e.g. `intake,triage`. */
 const LIST_SEPARATOR = ',';
 
-/** Separates a pair's two sides, e.g. `version=customfield_14310`. */
+/** Separates a pair's two sides, e.g. `priority=P2`. */
 const PAIR_SEPARATOR = '=';
 
 /**
@@ -74,7 +74,7 @@ export function readPairs(
 
     // Refused rather than last-wins: a repeated entry is a mistake in the
     // deployment, and silently keeping one of the two puts whichever was not
-    // meant onto every ticket this team files.
+    // meant onto every task this team creates.
     if (pairs.has(left)) {
       throw new Error(`${name} lists ${left} more than once`);
     }

@@ -1,10 +1,12 @@
-# Generated from spec/ by scripts/generate-contract.mjs. Do not edit.
+# Generated from spec/ and the package.json version by scripts/generate-contract.mjs. Do not edit.
 # ruff: noqa
 
 from __future__ import annotations
 
 import json
 from typing import Any, Literal, NotRequired, TypedDict
+
+SDK_VERSION = "2.0.0"
 
 CONTRACT_VERSION = "2.0"
 

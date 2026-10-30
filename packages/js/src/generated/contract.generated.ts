@@ -1,4 +1,6 @@
-// Generated from spec/ by scripts/generate-contract.mjs. Do not edit.
+// Generated from spec/ and the package.json version by scripts/generate-contract.mjs. Do not edit.
+
+export const SDK_VERSION = '2.0.0';
 
 export const CONTRACT_VERSION = '2.0';
 

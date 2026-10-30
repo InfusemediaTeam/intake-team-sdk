@@ -74,6 +74,11 @@ class GeneratedContractTest(unittest.TestCase):
                 for key in ("name", "title", "description", "scope", "readOnly", "required"):
                     self.assertEqual(tool[key], declared[key])
 
+    def test_every_tool_needs_a_scope_the_contract_defines(self) -> None:
+        for tool in TOOL_CONTRACTS:
+            with self.subTest(tool["name"]):
+                self.assertIn(tool["scope"], CONTRACT["scopes"].values())
+
     def test_every_tool_schema_stands_alone_and_compiles(self) -> None:
         # Each one stands alone, as an MCP client compiles it on its own.
         for tool in TOOL_CONTRACTS:

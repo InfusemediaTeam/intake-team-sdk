@@ -220,7 +220,11 @@ class HttpTransportTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(response.content, UNAUTHORIZED_BODY)
                 self.assertEqual(
                     response.json(),
-                    {"jsonrpc": "2.0", "error": {"code": -32001, "message": "Unauthorized"}, "id": None},
+                    {
+                        "jsonrpc": "2.0",
+                        "error": {"code": -32001, "message": "Unauthorized"},
+                        "id": None,
+                    },
                 )
 
     async def test_checks_the_token_before_reading_the_body(self) -> None:
@@ -231,7 +235,11 @@ class HttpTransportTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_answers_a_malformed_body_as_json_rpc(self) -> None:
         authorized = {"content-type": "application/json", "authorization": f"Bearer {token()}"}
-        malformed = {"jsonrpc": "2.0", "error": {"code": -32700, "message": "Malformed request"}, "id": None}
+        malformed = {
+            "jsonrpc": "2.0",
+            "error": {"code": -32700, "message": "Malformed request"},
+            "id": None,
+        }
 
         unreadable = await self.post(authorized, b"{not json")
         too_large = await self.post(authorized, b'{"padding":"' + b"x" * (256 * 1024) + b'"}')

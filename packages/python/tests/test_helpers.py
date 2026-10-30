@@ -144,7 +144,9 @@ def draft(core: dict[str, str] | None = None, field_values: dict[str, str] | Non
 
 LEVELS = ("Low", "High")
 
-MESSAGES = EnumFieldMessages(missing="State the level.", invalid=lambda value: f'"{value}" is not a level.')
+MESSAGES = EnumFieldMessages(
+    missing="State the level.", invalid=lambda value: f'"{value}" is not a level.'
+)
 
 
 class ReadinessReportTest(unittest.TestCase):
@@ -195,7 +197,9 @@ class ReadinessReportTest(unittest.TestCase):
         self.assertTrue(clear["ready"])
 
     def test_warns_only_about_a_missing_field(self) -> None:
-        present = readiness(draft({}, {"volume": "12"})).warn_missing_field("volume", "V.").verdict()
+        present = (
+            readiness(draft({}, {"volume": "12"})).warn_missing_field("volume", "V.").verdict()
+        )
         absent = readiness(draft()).warn_missing_field("volume", "V.").verdict()
 
         self.assertEqual(len(present["warnings"]), 0)
@@ -207,9 +211,13 @@ class ReadinessReportTest(unittest.TestCase):
         self.assertEqual(verdict["blockers"], [{"message": "This request is out of scope."}])
 
     def test_require_enum_field(self) -> None:
-        accepted = readiness(draft({}, {"level": "High"})).require_enum_field("level", LEVELS, MESSAGES)
+        accepted = readiness(draft({}, {"level": "High"})).require_enum_field(
+            "level", LEVELS, MESSAGES
+        )
         missing = readiness(draft()).require_enum_field("level", LEVELS, MESSAGES)
-        unknown = readiness(draft({}, {"level": "Medium"})).require_enum_field("level", LEVELS, MESSAGES)
+        unknown = readiness(draft({}, {"level": "Medium"})).require_enum_field(
+            "level", LEVELS, MESSAGES
+        )
 
         self.assertTrue(accepted.verdict()["ready"])
         self.assertEqual(

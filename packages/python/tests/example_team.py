@@ -145,6 +145,20 @@ EXAMPLE_DRAFT: Any = {
 
 READY_DRAFT: Any = {**copy.deepcopy(EXAMPLE_DRAFT), "fieldValues": {"exampleField": "filled"}}
 
+ABSENT: Any = object()
+"""Passed to `create_args` to leave an argument out entirely."""
+
+
+def create_args(**overrides: Any) -> dict[str, Any]:
+    args: dict[str, Any] = {
+        "idempotencyKey": "request-1",
+        "draft": READY_DRAFT,
+        "requester": {"userId": "user-1", "email": "ada@example.test"},
+    }
+    args.update(overrides)
+
+    return {key: value for key, value in args.items() if value is not ABSENT}
+
 
 def minimal_team(**overrides: Any) -> TeamDefinition:
     """The team without its own tools or status lookup, so the required surface stands alone."""

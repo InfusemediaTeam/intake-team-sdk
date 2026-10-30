@@ -1,6 +1,9 @@
 // Generates both SDKs' contract code from spec/: TypeScript interfaces and tool
-// schemas, and the Python TypedDicts and tool schemas. Run `npm run generate`
-// after editing spec/; `npm run check:generated` fails when the output is stale.
+// schemas, and the Python TypedDicts and tool schemas. Also stamps both with the
+// root package.json version, the one source of the SDK version: the servers
+// report it, and the Python package reads its own version from it. Run
+// `npm run generate` after editing spec/ or the version; `npm run
+// check:generated` fails when the output is stale.
 //
 // Covers only the JSON Schema subset spec/ uses: object, array, enum, $ref to
 // #/definitions, and nullable type unions. Anything else fails loudly.
@@ -14,11 +17,13 @@ import * as prettier from 'prettier';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SCHEMA = readJson('spec/intake-contract.schema.json');
 const CONTRACT = readJson('spec/contract.json');
+const { version: SDK_VERSION } = readJson('package.json');
 const DEFINITIONS = SCHEMA.definitions;
 
 const TS_OUT = 'packages/js/src/generated/contract.generated.ts';
 const PY_OUT = 'packages/python/src/intake_team_sdk/_generated.py';
-const HEADER = 'Generated from spec/ by scripts/generate-contract.mjs. Do not edit.';
+const HEADER =
+  'Generated from spec/ and the package.json version by scripts/generate-contract.mjs. Do not edit.';
 
 const check = process.argv.includes('--check');
 
@@ -194,6 +199,8 @@ function typescript() {
 
   return `// ${HEADER}
 
+export const SDK_VERSION = ${JSON.stringify(SDK_VERSION)};
+
 export const CONTRACT_VERSION = ${JSON.stringify(CONTRACT.contractVersion)};
 
 export const RESERVED_TOOL_PREFIX = ${JSON.stringify(CONTRACT.reservedToolPrefix)};
@@ -308,6 +315,8 @@ from __future__ import annotations
 
 import json
 from typing import Any, Literal, NotRequired, TypedDict
+
+SDK_VERSION = ${JSON.stringify(SDK_VERSION)}
 
 CONTRACT_VERSION = ${JSON.stringify(CONTRACT.contractVersion)}
 

@@ -14,7 +14,7 @@ import anyio
 import mcp.types as types
 from mcp.server.lowlevel import Server
 
-from ._generated import TOOL_CONTRACTS, CreateTaskInput, CreateTaskResult
+from ._generated import SDK_VERSION, TOOL_CONTRACTS, CreateTaskInput, CreateTaskResult
 from .contract import (
     CONTRACT_TOOL_PREFIX,
     CREATE_SCOPE,
@@ -35,8 +35,6 @@ from .task import (
     to_task_ids,
 )
 from .team import TaskCallContext, TeamDefinition, TeamTool
-
-SERVER_VERSION = "2.0.0"
 
 _INTERNAL_MESSAGE = "The department could not complete the request."
 
@@ -98,7 +96,7 @@ def build_team_server(
 
     _assert_tool_names_usable(team_tools)
 
-    server: Server[Any, Any] = Server(_server_name(definition), version=SERVER_VERSION)
+    server: Server[Any, Any] = Server(_server_name(definition), version=SDK_VERSION)
     contract_tools = [
         tool
         for tool in TOOL_CONTRACTS
@@ -119,7 +117,7 @@ def build_team_server(
             caller = resolve_caller(server)
             context = TaskCallContext(caller=caller)
 
-            _authorize(caller, CREATE_SCOPE if name == CREATE_TASK_TOOL else READ_SCOPE)
+            _authorize(caller, _required_scope(name, team_tools))
 
             result = await _dispatch(definition, team_tools, name, args, context)
         except Exception as error:
@@ -235,6 +233,28 @@ async def _create_task(
             del pending[key]
 
         flight.done.set()
+
+
+def _required_scope(name: str, team_tools: Sequence[TeamTool]) -> str:
+    """
+    The scope a call needs, decided on the server rather than left to which
+    tools a host shows a model.
+
+    A contract tool needs the scope `spec/` declares for it. A team tool that
+    is not read-only needs `intake:create`, the scope that already lets a
+    caller change state, so a token minted only to read never reaches one. A
+    read-only team tool, or a name nothing answers to, needs `intake:read`.
+    """
+    contract = next((tool for tool in TOOL_CONTRACTS if tool["name"] == name), None)
+
+    if contract is not None:
+        scope: str = contract["scope"]
+
+        return scope
+
+    tool = next((candidate for candidate in team_tools if candidate.name == name), None)
+
+    return CREATE_SCOPE if tool is not None and not tool.read_only else READ_SCOPE
 
 
 def _authorize(caller: ServiceCaller | None, scope: str) -> None:

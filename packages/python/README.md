@@ -171,7 +171,9 @@ is read strictly: a missing or malformed `idempotencyKey`
 that the requester is the token's subject, and runs `validate` again: a draft
 that is not ready is refused as `NOT_READY` and the team is never called.
 Concurrent calls with the same `(userId, idempotencyKey)` in one process are
-merged into one `create_task` call, and every caller receives its result.
+merged into one `create_task` call, and every caller receives its result. If the
+call that started it is cancelled before `create_task` answers, a call still
+waiting with the same key starts it again rather than sharing the cancellation.
 Retries after that are the team's to recognise: `create_task` must return the
 task it already created for a key it has seen. The returned reference is
 checked (non-blank `id` and `displayKey`, an `http(s)` `url` or `None`, a string
@@ -206,14 +208,29 @@ from the token), the signature in constant time, `iss`, `aud`, integer `iat` and
 `task_ids_sha256` that is a base64url SHA-256 when present.
 
 The verified caller reaches the tool as `context.caller` (`ServiceCaller` with
-`issuer`, `subject`, `task_ids_digest`, `scopes`, `token_id`, `expires_at`). `intake:create` is
-needed for creation, `intake:read` for every other tool. For creation,
+`issuer`, `subject`, `task_ids_digest`, `scopes`, `token_id`, `expires_at`). A
+contract tool needs the scope `spec/contract.json` declares for it:
+`intake:create` for creation, `intake:read` for every other contract tool. A
+team tool with `read_only=False` needs `intake:create`, so a token minted only to
+read cannot change state through it; a read-only team tool needs `intake:read`.
+Scopes are compared exactly, and any other scope a token carries grants nothing.
+For creation,
 `requester.userId` must equal the token's `sub`; otherwise the call is refused
 as `FORBIDDEN`, so whatever wrote the arguments cannot file a task under someone
 else. `intake_get_task_status` needs a `sub` and a `task_ids_sha256` equal to
 `task_ids_digest(taskIds)` of the call's own ids — the host signs exactly the ids
 it found owned by that requester — or it is refused as `FORBIDDEN` before
 `get_task_status` runs.
+
+**Tokens are not single-use.** No `jti` is remembered, so whoever holds a valid
+token can send it again until it expires: up to 300 seconds after `iat`, plus the
+30 seconds of clock tolerance. The token's claims bound what a replay can do (the
+same scopes, `sub` and `task_ids_sha256`), not how often. Idempotency is not
+replay protection: a replayed create token sent with a new `idempotencyKey` and
+any draft creates another task for that requester. Keep the HTTP leg on TLS,
+token lifetimes short and tokens out of logs. A department that needs one-time
+use must remember `context.caller.token_id` itself, until `expires_at` plus the
+tolerance; the SDK does not.
 
 `sign_service_token(...)` is for hosts and tests; `verify_service_token(token,
 options)` is what the HTTP transport runs. Both use the standard library only.
@@ -223,7 +240,8 @@ options)` is what the HTTP transport runs. Both use the standard library only.
 A team may offer extra tools to the host's assistant as `TeamTool(name, title,
 description, input_schema, read_only, execute)`, where `execute(args)` returns a
 string or an awaitable string. A host adapts only `read_only=True` tools into
-the assistant's toolset. Names starting with `intake_` are reserved for the
+the assistant's toolset, and over HTTP a `read_only=False` tool needs a token
+with `intake:create`. Names starting with `intake_` are reserved for the
 contract, and two tools may not share a name; either stops
 `create_team_server` with `ValueError`.
 
@@ -258,6 +276,14 @@ From `packages/python/`, with `mcp` installed in the active environment:
 
 ```sh
 python -m unittest discover -s tests
+```
+
+Lint and type-check with the pinned tools, as CI does:
+
+```sh
+pip install -r requirements-dev.txt
+ruff check src tests
+mypy
 ```
 
 The suite runs against `src/` directly. It validates the shared fixtures in

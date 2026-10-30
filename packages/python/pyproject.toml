@@ -4,13 +4,18 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "intake-team-sdk"
-version = "2.0.0"
+dynamic = ["version"]
 description = "Toolkit for building intake MCP servers in Python: the JSON Schema wire contract, server creation, transports, service-token authentication and generic draft, readiness and rendering helpers. Same contract as the JavaScript SDK."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
+# The SDK imports anyio, starlette and uvicorn itself, so they are declared
+# rather than left to arrive through mcp; the floors are mcp 1.30's own.
 dependencies = [
     "mcp>=1.30,<2",
+    "anyio>=4.5",
+    "starlette>=0.27",
+    "uvicorn>=0.31.1",
 ]
 
 [project.urls]
@@ -23,3 +28,20 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 intake_team_sdk = ["py.typed"]
+
+# The root package.json version, stamped into _generated.py by
+# scripts/generate-contract.mjs, so both SDKs ship and report one version.
+[tool.setuptools.dynamic]
+version = { attr = "intake_team_sdk._generated.SDK_VERSION" }
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src"]

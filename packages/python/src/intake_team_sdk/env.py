@@ -14,7 +14,7 @@ from .service_token import ServiceTokenOptions
 # Separates entries in a list-valued variable, e.g. `intake,triage`.
 _LIST_SEPARATOR = ","
 
-# Separates a pair's two sides, e.g. `version=customfield_14310`.
+# Separates a pair's two sides, e.g. `priority=P2`.
 _PAIR_SEPARATOR = "="
 
 
@@ -75,7 +75,7 @@ def read_pairs(
 
         # Refused rather than last-wins: a repeated entry is a mistake in the
         # deployment, and silently keeping one of the two puts whichever was
-        # not meant onto every ticket this team files.
+        # not meant onto every task this team creates.
         if left in pairs:
             raise ValueError(f"{name} lists {left} more than once")
 

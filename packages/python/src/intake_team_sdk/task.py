@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, cast
 
 from ._generated import (
     CreateTaskInput,
     TaskReference,
+    TaskStatus,
     TaskStatusResult,
     ToolErrorBody,
     ToolErrorCode,
@@ -157,7 +158,7 @@ def checked_statuses(result: Any, task_ids: list[str]) -> TaskStatusResult:
         and _nullable_text(status.get("lastChangedAt", _MISSING))
     ]
 
-    return {"statuses": statuses}
+    return {"statuses": cast(list[TaskStatus], statuses)}
 
 
 def _nullable_text(value: Any) -> bool:

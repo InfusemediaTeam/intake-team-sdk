@@ -60,8 +60,22 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install the package
-        run: python -m pip install ./packages/python
+      - name: Install the package and the pinned lint tools
+        run: python -m pip install ./packages/python -r packages/python/requirements-dev.txt
+
+      - name: Installed package imports on its own
+        # From outside the checkout, so only the installed copy and its
+        # declared dependencies can satisfy the import.
+        working-directory: ${{ runner.temp }}
+        run: python -c "import intake_team_sdk"
+
+      - name: Lint
+        working-directory: packages/python
+        run: ruff check src tests
+
+      - name: Typecheck
+        working-directory: packages/python
+        run: mypy
 
       - name: Test
         # The suite reads the shared fixtures in ../../spec, so it runs from the

@@ -94,7 +94,10 @@ reported as `INTERNAL`, retryable, with a generic message.
 from your own storage (for example, label each task `intake-id-<key>` in your
 tracker and search for that label before creating). The SDK also merges concurrent calls
 with the same requester and key inside one process, but only your storage can
-recognise a task created before a restart or by another replica.
+recognise a task created before a restart or by another replica. If the call that
+started a merged creation is aborted before your `createTask` answers, a call
+still waiting with the same key starts it again rather than sharing the abort; a
+`createTask` that fails on its own is shared with every waiting call.
 
 ## Installing
 
@@ -250,11 +253,24 @@ JSON-RPC `Unauthorized` body, and the reason is not disclosed. Checked:
 - `jti` and `scope` present; `sub`, if present, non-empty; `task_ids_sha256`,
   if present, a base64url SHA-256.
 
-Tokens are not single-use: no `jti` is remembered, so a token is accepted again
-until it expires. Keep the HTTP leg on TLS and token lifetimes short.
+**Tokens are not single-use.** No `jti` is remembered, so whoever holds a valid
+token (the host, or anything that intercepts or logs it) can send it again until
+it expires: up to 300 seconds after `iat`, plus the 30 seconds of clock
+tolerance. The token's claims bound what a replay can do: the same scopes, the
+same `sub`, the same `task_ids_sha256`. They do not bound how often it can be
+done. Idempotency is not replay protection: it only merges calls that reuse an
+`idempotencyKey`, so a replayed create token sent with a new key and any draft
+creates another task for that requester. Keep the HTTP leg on TLS, keep token
+lifetimes as short as your host allows, never log tokens, and mint a token per
+call. A department that needs one-time use must remember `context.caller.tokenId`
+itself, until `expiresAt` plus the tolerance; the SDK does not.
 
-The verified caller then authorizes each call: `intake_create_task` needs the
-`intake:create` scope, every other tool `intake:read`. **A create whose
+The verified caller then authorizes each call. A contract tool needs the scope
+`spec/contract.json` declares for it: `intake_create_task` needs `intake:create`,
+every other contract tool `intake:read`. A team tool with `readOnly: false` needs
+`intake:create`, so a token minted only to read cannot change state through it;
+a read-only team tool needs `intake:read`. Scopes are compared exactly, and any
+other scope a token carries grants nothing. **A create whose
 `requester.userId` differs from the token's `sub` (or whose token has no `sub`)
 is refused with `FORBIDDEN`**,
 so whatever wrote the arguments cannot file a task under someone else.
@@ -267,7 +283,7 @@ with no `sub`, no `task_ids_sha256`, or a digest that does not match the call's
 own `taskIds` is refused with `FORBIDDEN` before your `getTaskStatus` runs, so a
 token for discovery or a preview reads no task, and no id can be added to a call
 after signing. Your handler should still only look where your own tasks live
-(e.g. your own Jira project). The secret
+(e.g. your own project or queue). The secret
 must be at least 32 characters; a shorter one, or a blank issuer or audience,
 stops the server starting.
 
@@ -325,11 +341,12 @@ In a stdio server stdout is the protocol: write diagnostics to stderr.
   `authToken`, and `isBearerAuthorized` is gone: the host now sends a signed,
   short-lived token rather than a static one.
 - Team tools may not start with `intake_`, and `execute` may return a promise.
+  Over HTTP, a team tool with `readOnly: false` needs a token with `intake:create`.
 
 ## Working on the SDK
 
 ```
-npm run generate         # spec/ -> packages/js/src/generated + packages/python/src/intake_team_sdk/_generated.py
+npm run generate         # spec/ + package.json version -> packages/js/src/generated + packages/python/src/intake_team_sdk/_generated.py
 npm run check:generated  # fails when either generated file is stale
 npm run build            # packages/js/tsconfig.build.json -> packages/js/dist/, src only
 npm run typecheck

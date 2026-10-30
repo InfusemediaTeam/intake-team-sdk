@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, TypeGuard
 
 from ._generated import IntakeDraft
 from ._text import js_trim
 
 
-def filled(value: str | None) -> bool:
+def filled(value: str | None) -> TypeGuard[str]:
     """A present, non-blank value. Blank and absent mean the same thing here."""
     return isinstance(value, str) and len(js_trim(value)) > 0
 

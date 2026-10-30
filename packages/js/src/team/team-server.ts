@@ -21,7 +21,7 @@ import type {
   ICreateTaskResult,
 } from '../contract/contract.types';
 import { toIntakeDraft } from '../draft/draft.helper';
-import { TOOL_CONTRACTS } from '../generated/contract.generated';
+import { SDK_VERSION, TOOL_CONTRACTS } from '../generated/contract.generated';
 import { TaskError } from '../task/task-error';
 import {
   checkedStatuses,
@@ -35,8 +35,6 @@ import type {
   ITeamTool,
 } from './team-definition';
 
-const SERVER_VERSION = '2.0.0';
-
 const INTERNAL_MESSAGE = 'The department could not complete the request.';
 
 type ToolResult = {
@@ -44,6 +42,16 @@ type ToolResult = {
   structuredContent?: Record<string, unknown>;
   isError?: boolean;
 };
+
+/**
+ * How one creation in flight ended, as every call that joined it sees it.
+ * `abandoned` means the call that owned it was aborted before the team
+ * answered, so nothing is known about the task.
+ */
+type FlightOutcome =
+  | { readonly kind: 'created'; readonly result: ICreateTaskResult }
+  | { readonly kind: 'failed'; readonly error: unknown }
+  | { readonly kind: 'abandoned'; readonly error: unknown };
 
 export interface ITeamServerOptions {
   /**
@@ -61,7 +69,7 @@ export interface ITeamServerOptions {
  */
 const inFlight = new WeakMap<
   ITeamDefinition,
-  Map<string, Promise<ICreateTaskResult>>
+  Map<string, Promise<FlightOutcome>>
 >();
 
 /**
@@ -85,7 +93,7 @@ export function createTeamServer(
   options: ITeamServerOptions = { caller: null },
 ): Server {
   const server = new Server(
-    { name: serverName(definition), version: SERVER_VERSION },
+    { name: serverName(definition), version: SDK_VERSION },
     { capabilities: { tools: {} } },
   );
 
@@ -132,10 +140,7 @@ export function createTeamServer(
     };
 
     try {
-      authorize(
-        options.caller,
-        name === CREATE_TASK_TOOL ? CREATE_SCOPE : READ_SCOPE,
-      );
+      authorize(options.caller, requiredScope(name, teamTools));
 
       return await dispatch(definition, teamTools, name, args, context);
     } catch (error) {
@@ -228,28 +233,68 @@ async function createTask(
 
   const pending = inFlightFor(definition);
   const key = `${input.requester.userId}\u0000${input.idempotencyKey}`;
-  const running = pending.get(key);
 
-  if (running) return running;
+  for (
+    let running = pending.get(key);
+    running !== undefined;
+    running = pending.get(key)
+  ) {
+    const outcome = await running;
 
-  const created = (async () => {
+    if (outcome.kind === 'created') return outcome.result;
+
+    if (outcome.kind === 'failed') throw outcome.error;
+
+    // The call that owned the creation was aborted before it settled, so
+    // nothing is known about the task; this call takes the creation over,
+    // unless it was aborted too.
+    context.signal.throwIfAborted();
+  }
+
+  let settle!: (outcome: FlightOutcome) => void;
+  const flight = new Promise<FlightOutcome>((resolve) => {
+    settle = resolve;
+  });
+
+  pending.set(key, flight);
+
+  const outcome = await attemptCreation(definition, input, context);
+
+  // Removed before the waiters resume, so the first of them to find no
+  // creation in flight is the one that starts the next.
+  if (pending.get(key) === flight) pending.delete(key);
+
+  settle(outcome);
+
+  if (outcome.kind === 'created') return outcome.result;
+
+  throw outcome.error;
+}
+
+/** The team's own creation, settled into an outcome rather than a rejection. */
+async function attemptCreation(
+  definition: ITeamDefinition,
+  input: ICreateTaskInput,
+  context: ITaskCallContext,
+): Promise<FlightOutcome> {
+  try {
     const result = await definition.createTask(input, context);
 
-    return { task: checkedTaskReference(result.task) };
-  })();
-
-  pending.set(key, created);
-
-  try {
-    return await created;
-  } finally {
-    pending.delete(key);
+    return {
+      kind: 'created',
+      result: { task: checkedTaskReference(result.task) },
+    };
+  } catch (error) {
+    return {
+      kind: context.signal.aborted ? 'abandoned' : 'failed',
+      error,
+    };
   }
 }
 
 function inFlightFor(
   definition: ITeamDefinition,
-): Map<string, Promise<ICreateTaskResult>> {
+): Map<string, Promise<FlightOutcome>> {
   let pending = inFlight.get(definition);
 
   if (!pending) {
@@ -258,6 +303,25 @@ function inFlightFor(
   }
 
   return pending;
+}
+
+/**
+ * The scope a call needs, decided on the server rather than left to which
+ * tools a host shows a model.
+ *
+ * A contract tool needs the scope `spec/` declares for it. A team tool that is
+ * not read-only needs `intake:create`, the scope that already lets a caller
+ * change state, so a token minted only to read never reaches one. A read-only
+ * team tool, or a name nothing answers to, needs `intake:read`.
+ */
+function requiredScope(name: string, teamTools: readonly ITeamTool[]): string {
+  const contract = TOOL_CONTRACTS.find((tool) => tool.name === name);
+
+  if (contract) return contract.scope;
+
+  const tool = teamTools.find((candidate) => candidate.name === name);
+
+  return tool && !tool.readOnly ? CREATE_SCOPE : READ_SCOPE;
 }
 
 /** @throws TaskError when a token caller lacks the scope. */
