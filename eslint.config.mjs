@@ -9,7 +9,7 @@ import tseslint from 'typescript-eslint';
  * boundary, and an unchecked `any` here is a malformed contract there.
  */
 export default tseslint.config(
-  { ignores: ['eslint.config.mjs', 'dist/**', 'dist-test/**'] },
+  { ignores: ['eslint.config.mjs', '**/dist/**', '**/dist-test/**'] },
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   eslintPluginPrettierRecommended,
@@ -24,7 +24,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['tests/**/*.ts'],
+    files: ['packages/js/tests/**/*.ts'],
     rules: {
       // `describe` and `it` from `node:test` return promises the runner owns.
       // Awaiting them is wrong, and `void`-prefixing every case would be noise.

@@ -1,0 +1,275 @@
+{
+  "description": "Values each SDK must judge the same way against spec/intake-contract.schema.json.",
+  "cases": [
+    {
+      "name": "minimal descriptor",
+      "definition": "TeamDescriptor",
+      "valid": true,
+      "value": {
+        "contractVersion": "2.0",
+        "team": { "key": "QA", "title": "QA", "subtitle": "Testing" },
+        "fields": [],
+        "readinessNotes": []
+      }
+    },
+    {
+      "name": "descriptor from a later minor version with an extra property",
+      "definition": "TeamDescriptor",
+      "valid": true,
+      "value": {
+        "contractVersion": "2.3",
+        "team": { "key": "QA_TOOLS", "title": "QA", "subtitle": "" },
+        "fields": [
+          {
+            "key": "environment",
+            "label": "Environment",
+            "description": "Where it happens",
+            "kind": "enum",
+            "required": true,
+            "options": ["staging", "production"]
+          }
+        ],
+        "readinessNotes": ["Production needs an approver."],
+        "somethingNew": true
+      }
+    },
+    {
+      "name": "descriptor still declaring contract 1.0",
+      "definition": "TeamDescriptor",
+      "valid": false,
+      "value": {
+        "contractVersion": "1.0",
+        "team": { "key": "QA", "title": "QA", "subtitle": "" },
+        "fields": [],
+        "readinessNotes": []
+      }
+    },
+    {
+      "name": "descriptor with a lower-case team key",
+      "definition": "TeamDescriptor",
+      "valid": false,
+      "value": {
+        "contractVersion": "2.0",
+        "team": { "key": "qa", "title": "QA", "subtitle": "" },
+        "fields": [],
+        "readinessNotes": []
+      }
+    },
+    {
+      "name": "field of an unknown kind",
+      "definition": "TeamField",
+      "valid": false,
+      "value": {
+        "key": "x",
+        "label": "X",
+        "description": "",
+        "kind": "number",
+        "required": false
+      }
+    },
+    {
+      "name": "complete draft",
+      "definition": "IntakeDraft",
+      "valid": true,
+      "value": {
+        "core": {
+          "title": "Fix the export",
+          "whatNeeded": "The CSV export drops rows",
+          "urgency": "End of Week",
+          "businessValue": null,
+          "approver": null
+        },
+        "fieldValues": { "environment": "staging" },
+        "requester": { "displayName": "Ada Lovelace", "department": "Research" }
+      }
+    },
+    {
+      "name": "draft with a non-string field value",
+      "definition": "IntakeDraft",
+      "valid": false,
+      "value": {
+        "core": {
+          "title": null,
+          "whatNeeded": null,
+          "urgency": null,
+          "businessValue": null,
+          "approver": null
+        },
+        "fieldValues": { "count": 3 },
+        "requester": { "displayName": null, "department": null }
+      }
+    },
+    {
+      "name": "create input",
+      "definition": "CreateTaskInput",
+      "valid": true,
+      "value": {
+        "idempotencyKey": "0190f7a2-1c2b-7d3e-8f40-123456789abc",
+        "draft": {
+          "core": {
+            "title": "Fix the export",
+            "whatNeeded": "The CSV export drops rows",
+            "urgency": null,
+            "businessValue": null,
+            "approver": null
+          },
+          "fieldValues": {},
+          "requester": { "displayName": "Ada", "department": null }
+        },
+        "requester": { "userId": "0190f7a2-0000-7000-8000-000000000001", "email": "ada@example.com" }
+      }
+    },
+    {
+      "name": "create input without a userId",
+      "definition": "CreateTaskInput",
+      "valid": false,
+      "value": {
+        "idempotencyKey": "abc",
+        "draft": {
+          "core": {
+            "title": null,
+            "whatNeeded": null,
+            "urgency": null,
+            "businessValue": null,
+            "approver": null
+          },
+          "fieldValues": {},
+          "requester": { "displayName": null, "department": null }
+        },
+        "requester": { "email": "ada@example.com" }
+      }
+    },
+    {
+      "name": "create input with a malformed idempotency key",
+      "definition": "CreateTaskInput",
+      "valid": false,
+      "value": {
+        "idempotencyKey": "has spaces",
+        "draft": {
+          "core": {
+            "title": null,
+            "whatNeeded": null,
+            "urgency": null,
+            "businessValue": null,
+            "approver": null
+          },
+          "fieldValues": {},
+          "requester": { "displayName": null, "department": null }
+        },
+        "requester": { "userId": "u", "email": null }
+      }
+    },
+    {
+      "name": "created task with a link",
+      "definition": "CreateTaskResult",
+      "valid": true,
+      "value": {
+        "task": {
+          "id": "10042",
+          "displayKey": "PROJ-42",
+          "url": "https://example.atlassian.net/browse/PROJ-42",
+          "location": "proj-intake"
+        }
+      }
+    },
+    {
+      "name": "created task with no link",
+      "definition": "CreateTaskResult",
+      "valid": true,
+      "value": {
+        "task": { "id": "q-7", "displayKey": "Q-7", "url": null, "location": null }
+      }
+    },
+    {
+      "name": "created task with a non-http link",
+      "definition": "CreateTaskResult",
+      "valid": false,
+      "value": {
+        "task": {
+          "id": "x",
+          "displayKey": "X-1",
+          "url": "javascript:alert(1)",
+          "location": null
+        }
+      }
+    },
+    {
+      "name": "created task without a display key",
+      "definition": "CreateTaskResult",
+      "valid": false,
+      "value": { "task": { "id": "x", "url": null, "location": null } }
+    },
+    {
+      "name": "status lookup",
+      "definition": "TaskStatusInput",
+      "valid": true,
+      "value": { "taskIds": ["10042", "10043"] }
+    },
+    {
+      "name": "empty status lookup",
+      "definition": "TaskStatusInput",
+      "valid": false,
+      "value": { "taskIds": [] }
+    },
+    {
+      "name": "status result",
+      "definition": "TaskStatusResult",
+      "valid": true,
+      "value": {
+        "statuses": [
+          {
+            "taskId": "10042",
+            "category": "in_progress",
+            "label": "In Review",
+            "assignee": "Grace Hopper",
+            "lastChangedAt": "2026-10-28T09:00:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "status with an unknown category",
+      "definition": "TaskStatusResult",
+      "valid": false,
+      "value": {
+        "statuses": [
+          {
+            "taskId": "10042",
+            "category": "blocked",
+            "label": "Blocked",
+            "assignee": null,
+            "lastChangedAt": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "tool error",
+      "definition": "ToolError",
+      "valid": true,
+      "value": {
+        "error": { "code": "DESTINATION_UNAVAILABLE", "message": "Jira is not reachable", "retryable": true }
+      }
+    },
+    {
+      "name": "tool error with an unknown code",
+      "definition": "ToolError",
+      "valid": false,
+      "value": { "error": { "code": "TEAPOT", "message": "x", "retryable": false } }
+    },
+    {
+      "name": "service token claims",
+      "definition": "ServiceTokenClaims",
+      "valid": true,
+      "value": {
+        "iss": "example-host",
+        "aud": "qa",
+        "sub": "user-1",
+        "scope": "intake:read intake:create",
+        "iat": 1800000000,
+        "exp": 1800000060,
+        "jti": "token-1"
+      }
+    }
+  ]
+}
