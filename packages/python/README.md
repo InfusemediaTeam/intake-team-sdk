@@ -170,17 +170,23 @@ is read strictly: a missing or malformed `idempotencyKey`
 **Creation.** Before `create_task` runs, the server checks the caller's scope,
 that the requester is the token's subject, and runs `validate` again: a draft
 that is not ready is refused as `NOT_READY` and the team is never called.
-Concurrent calls with the same `(userId, idempotencyKey)` in one process are
-merged into one `create_task` call, and every caller receives its result. If the
+Concurrent calls with the same `idempotencyKey` in one process, whoever the
+requester, are merged into one `create_task` call, and every caller receives its result. If the
 call that started it is cancelled before `create_task` answers, a call still
 waiting with the same key starts it again rather than sharing the cancellation.
 Retries after that are the team's to recognise: `create_task` must return the
 task it already created for a key it has seen. The returned reference is
-checked (non-blank `id` and `displayKey`, an `http(s)` `url` or `None`, a string
-or `None` `location`); a malformed one is reported as `INTERNAL`.
+checked against the output schema, with a non-blank `id` and `displayKey`; a
+malformed one is reported as `INTERNAL`.
 
 **Status.** `get_task_status` receives the ids asked about. Statuses for ids not
-asked about, or with a malformed field, are dropped.
+asked about, or with a field the output schema rejects, are dropped.
+
+**Output.** Every structured result is checked against its tool's output schema
+with `jsonschema`, as the MCP client checks it, before it is sent. One the
+host's client would reject (an overlong string, too many items) is reported as
+`INTERNAL` instead, with where it failed written to stderr. A descriptor that
+fails raises `ValueError` when the server is built.
 
 **Errors.** A failed call returns `isError: true` with
 `{"error": {"code", "message", "retryable"}}` as JSON text and no

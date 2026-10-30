@@ -89,6 +89,23 @@ describe('runHttpTeamServer', () => {
     );
   });
 
+  it('refuses to start with a descriptor its output schema rejects', () => {
+    assert.throws(
+      () =>
+        runHttpTeamServer(
+          {
+            ...EXAMPLE_TEAM,
+            descriptor: {
+              ...EXAMPLE_TEAM.descriptor,
+              team: { ...EXAMPLE_TEAM.descriptor.team, key: 'lower' },
+            },
+          },
+          { port: 0, auth: AUTH },
+        ),
+      { message: /intake_get_team_descriptor result does not match/ },
+    );
+  });
+
   it('installs no process signal handlers by default', () => {
     // A library that registers these takes a decision that is the caller's: an
     // embedding application has its own shutdown order, and a handler installed

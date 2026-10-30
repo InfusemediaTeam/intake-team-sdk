@@ -72,7 +72,8 @@ def create_http_app(
     call.
 
     Raises `ValueError` if the secret is shorter than 32 characters, the issuer
-    or audience is blank, or a team tool name is unusable.
+    or audience is blank, the descriptor does not match its output schema, or a
+    team tool name is unusable.
     """
     assert_service_secret(auth.secret)
 

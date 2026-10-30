@@ -10,6 +10,7 @@ import contextlib
 import json
 import unittest
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from typing import Any
 
 from support import error_of
@@ -265,6 +266,15 @@ class HttpStartupTest(unittest.IsolatedAsyncioTestCase):
             with self.subTest(auth=auth):
                 with self.assertRaisesRegex(ValueError, "issuer and audience are required"):
                     await run_http_team_server(EXAMPLE_TEAM, 0, auth)
+
+    async def test_refuses_to_start_with_a_descriptor_its_output_schema_rejects(self) -> None:
+        team = replace(
+            EXAMPLE_TEAM,
+            descriptor={**EXAMPLE_TEAM.descriptor, "team": {"key": "lower"}},
+        )
+
+        with self.assertRaisesRegex(ValueError, "intake_get_team_descriptor result does not"):
+            await run_http_team_server(team, 0, AUTH)
 
     async def test_run_serves_until_cancelled_without_signal_handlers(self) -> None:
         import signal

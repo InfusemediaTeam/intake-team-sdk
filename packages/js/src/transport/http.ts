@@ -9,6 +9,8 @@ import type {
   IServiceTokenOptions,
 } from '../auth/service-token';
 import { assertServiceSecret, verifyServiceToken } from '../auth/service-token';
+import { GET_TEAM_DESCRIPTOR_TOOL } from '../contract/contract.constants';
+import { assertContractOutput } from '../contract/contract-output';
 import { createTeamServer } from '../team/team-server';
 import type { ITeamDefinition } from '../team/team-definition';
 
@@ -70,8 +72,8 @@ export interface IHttpTeamServerOptions {
  * Lifecycle belongs to the caller: the listener is returned, and closing it is
  * theirs to do. Nothing here ends the process.
  *
- * @throws If the secret is shorter than 32 characters, or the issuer or
- * audience is blank.
+ * @throws If the secret is shorter than 32 characters, the issuer or audience
+ * is blank, or the descriptor does not match its output schema.
  */
 export function runHttpTeamServer(
   definition: ITeamDefinition,
@@ -89,6 +91,10 @@ export function runHttpTeamServer(
       'A token issuer and audience are required to serve a team over HTTP',
     );
   }
+
+  // A server is built per request, so the descriptor is checked here as well,
+  // before the port is opened.
+  assertContractOutput(GET_TEAM_DESCRIPTOR_TOOL, definition.descriptor);
 
   const app = express();
 

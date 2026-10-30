@@ -125,11 +125,11 @@ describe('task creation', () => {
     await client.close();
   });
 
-  it('does not merge different requesters that use the same key', async () => {
+  it('merges different requesters that use the same key, as the key alone names a creation', async () => {
     const team = exampleTeam();
     const client = await connect(team);
 
-    await Promise.all([
+    const [first, second] = await Promise.all([
       client.callTool({ name: CREATE_TASK_TOOL, arguments: createArgs() }),
       client.callTool({
         name: CREATE_TASK_TOOL,
@@ -137,7 +137,32 @@ describe('task creation', () => {
       }),
     ]);
 
-    assert.equal(team.calls.length, 2);
+    assert.equal(team.calls.length, 1);
+    assert.deepEqual(second.structuredContent, first.structuredContent);
+
+    await client.close();
+  });
+
+  it('creates independently for different keys', async () => {
+    const team = exampleTeam();
+    const client = await connect(team);
+
+    const results = await Promise.all(
+      ['key-1', 'key-2', 'key-3'].map((idempotencyKey) =>
+        client.callTool({
+          name: CREATE_TASK_TOOL,
+          arguments: createArgs({ idempotencyKey }),
+        }),
+      ),
+    );
+
+    assert.equal(team.calls.length, 3);
+    assert.equal(team.created.size, 3);
+    assert.equal(
+      new Set(results.map((result) => JSON.stringify(result.structuredContent)))
+        .size,
+      3,
+    );
 
     await client.close();
   });

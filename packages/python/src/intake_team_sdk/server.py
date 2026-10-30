@@ -14,6 +14,7 @@ import anyio
 import mcp.types as types
 from mcp.server.lowlevel import Server
 
+from ._contract_output import assert_contract_output
 from ._generated import SDK_VERSION, TOOL_CONTRACTS, CreateTaskInput, CreateTaskResult
 from .contract import (
     CONTRACT_TOOL_PREFIX,
@@ -79,8 +80,8 @@ def create_team_server(
     published verbatim, because a host converts a model-facing schema into its
     own schema type and a generated one would carry shapes it has to reject.
 
-    Raises `ValueError` if a team tool uses the reserved `intake_` prefix, or
-    two team tools share a name.
+    Raises `ValueError` if the descriptor does not match its output schema, a
+    team tool uses the reserved `intake_` prefix, or two team tools share a name.
     """
     return build_team_server(definition, lambda _server: caller)
 
@@ -92,6 +93,10 @@ def build_team_server(
     `create_team_server` with the caller looked up per call, for a transport
     that authenticates each request rather than each process.
     """
+    # Every discovery call would fail on a descriptor the host's client
+    # rejects, so it stops startup instead.
+    assert_contract_output(GET_TEAM_DESCRIPTOR_TOOL, definition.descriptor)
+
     team_tools = tuple(definition.tools)
 
     _assert_tool_names_usable(team_tools)
@@ -143,17 +148,17 @@ async def _dispatch(
     context: TaskCallContext,
 ) -> types.CallToolResult:
     if name == GET_TEAM_DESCRIPTOR_TOOL:
-        return _structured(definition.descriptor)
+        return _structured(name, definition.descriptor)
 
     if name == VALIDATE_DEFINITION_OF_READY_TOOL:
-        return _structured(definition.validate(to_intake_draft(args)))
+        return _structured(name, definition.validate(to_intake_draft(args)))
 
     if name == RENDER_TICKET_TOOL:
-        return _structured(definition.render(to_intake_draft(args)))
+        return _structured(name, definition.render(to_intake_draft(args)))
 
     if name == CREATE_TASK_TOOL:
         return _structured(
-            await _create_task(definition, to_create_task_input(args), context)
+            name, await _create_task(definition, to_create_task_input(args), context)
         )
 
     if name == GET_TASK_STATUS_TOOL and definition.get_task_status is not None:
@@ -162,7 +167,7 @@ async def _dispatch(
         _authorize_status_read(context.caller, task_ids)
 
         return _structured(
-            checked_statuses(await definition.get_task_status(task_ids, context), task_ids)
+            name, checked_statuses(await definition.get_task_status(task_ids, context), task_ids)
         )
 
     tool = next((candidate for candidate in team_tools if candidate.name == name), None)
@@ -188,6 +193,9 @@ async def _create_task(
     filing a task under someone else by whatever wrote the arguments. The draft
     must pass the team's own readiness check again: confirmation at the host is
     a claim about the draft, and this is where it is checked.
+
+    Concurrent calls are merged by `idempotencyKey` alone, the contract's
+    identifier for one creation request, as the team's own storage recognises it.
     """
     if context.caller is not None and context.caller.subject != input["requester"]["userId"]:
         raise TaskError("FORBIDDEN", "The requester does not match the authenticated caller")
@@ -198,7 +206,7 @@ async def _create_task(
         raise TaskError("NOT_READY", "The draft does not meet the Definition of Ready")
 
     pending = _in_flight.setdefault(definition, {})
-    key = f"{input['requester']['userId']}\u0000{input['idempotencyKey']}"
+    key = input["idempotencyKey"]
 
     while (running := pending.get(key)) is not None:
         await running.done.wait()
@@ -339,13 +347,19 @@ def _team_tool(tool: TeamTool) -> types.Tool:
     )
 
 
-def _structured(payload: Any) -> types.CallToolResult:
+def _structured(tool: str, payload: Any) -> types.CallToolResult:
     """
     A contract result, sent both ways.
 
     `structuredContent` is what a host reads; the JSON text alongside it keeps
     the result legible to any MCP client that only understands content blocks.
+
+    Raises `ValueError` if the payload does not match the tool's published
+    output schema: the host's client would reject it, so it is the team's bug,
+    reported as `INTERNAL` like any other.
     """
+    assert_contract_output(tool, payload)
+
     return types.CallToolResult(
         content=[types.TextContent(type="text", text=_json(payload))],
         structuredContent=payload,

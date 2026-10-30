@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any, cast
 
+from ._contract_output import is_task_reference, is_task_status
 from ._generated import (
     CreateTaskInput,
     TaskReference,
@@ -25,10 +26,6 @@ _MAX_USER_ID_LENGTH = 128
 _MAX_TASK_IDS = 50
 
 _MAX_TASK_ID_LENGTH = 256
-
-_TASK_URL = re.compile(r"https?://")
-
-_STATUS_CATEGORIES = ("todo", "in_progress", "done")
 
 _MISSING: Any = object()
 
@@ -118,48 +115,36 @@ def checked_task_reference(task: Any) -> TaskReference:
     """
     A department's own task reference, checked before it leaves the server.
 
+    Held to the output schema, and its `id` and `displayKey` must not be blank.
     A malformed one is the department's bug, so it is reported as `INTERNAL`
     here rather than as a schema failure inside the host.
     """
-    source = task if isinstance(task, dict) else {}
-    url = source.get("url", _MISSING)
-    location = source.get("location", _MISSING)
-    valid = (
-        non_blank(source.get("id"))
-        and non_blank(source.get("displayKey"))
-        and (url is None or (isinstance(url, str) and _TASK_URL.match(url) is not None))
-        and (location is None or isinstance(location, str))
-    )
-
-    if not valid:
+    if not (
+        is_task_reference(task)
+        and non_blank(task.get("id"))
+        and non_blank(task.get("displayKey"))
+    ):
         raise TaskError("INTERNAL", "The department returned a malformed task reference")
 
     return {
-        "id": source["id"],
-        "displayKey": source["displayKey"],
-        "url": url,
-        "location": location,
+        "id": task["id"],
+        "displayKey": task["displayKey"],
+        "url": task["url"],
+        "location": task["location"],
     }
 
 
 def checked_statuses(result: Any, task_ids: list[str]) -> TaskStatusResult:
-    """Only statuses for the ids asked about, each checked; the rest are dropped."""
+    """
+    Only statuses for the ids asked about, each held to the output schema with a
+    label that is not blank; the rest are dropped.
+    """
     asked = set(task_ids)
     listed = result.get("statuses") if isinstance(result, dict) else None
     statuses = [
         status
         for status in (listed if isinstance(listed, list) else [])
-        if isinstance(status, dict)
-        and isinstance(status.get("taskId"), str)
-        and status["taskId"] in asked
-        and status.get("category") in _STATUS_CATEGORIES
-        and non_blank(status.get("label"))
-        and _nullable_text(status.get("assignee", _MISSING))
-        and _nullable_text(status.get("lastChangedAt", _MISSING))
+        if is_task_status(status) and status["taskId"] in asked and non_blank(status["label"])
     ]
 
     return {"statuses": cast(list[TaskStatus], statuses)}
-
-
-def _nullable_text(value: Any) -> bool:
-    return value is None or isinstance(value, str)

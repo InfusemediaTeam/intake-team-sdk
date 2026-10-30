@@ -82,18 +82,35 @@ class CreateTaskTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(team.calls), 1)
 
-    async def test_does_not_merge_different_requesters_with_the_same_key(self) -> None:
+    async def test_merges_different_requesters_with_the_same_key(self) -> None:
+        # The key alone names a creation, as the contract defines it.
         team = example_team()
 
         async with connect(team) as client:
-            await asyncio.gather(
+            first, second = await asyncio.gather(
                 client.call_tool(CREATE_TASK_TOOL, create_args()),
                 client.call_tool(
                     CREATE_TASK_TOOL, create_args(requester={"userId": "user-2", "email": None})
                 ),
             )
 
-        self.assertEqual(len(team.calls), 2)
+        self.assertEqual(len(team.calls), 1)
+        self.assertEqual(second.structuredContent, first.structuredContent)
+
+    async def test_creates_independently_for_different_keys(self) -> None:
+        team = example_team()
+
+        async with connect(team) as client:
+            results = await asyncio.gather(
+                *(
+                    client.call_tool(CREATE_TASK_TOOL, create_args(idempotencyKey=key))
+                    for key in ("key-1", "key-2", "key-3")
+                )
+            )
+
+        self.assertEqual(len(team.calls), 3)
+        self.assertEqual(len(team.created), 3)
+        self.assertEqual(len({json.dumps(result.structuredContent) for result in results}), 3)
 
     async def test_shares_a_failure_with_every_merged_call(self) -> None:
         calls = 0

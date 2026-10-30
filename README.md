@@ -87,13 +87,20 @@ Throw `TaskError` from your handlers to report one; its message must be safe to
 show a requester. Anything else thrown is logged to stderr (message only) and
 reported as `INTERNAL`, retryable, with a generic message.
 
+Every structured result is checked against its tool's output schema, with the
+validator the MCP client itself uses, before it is sent. A result the host's
+client would reject (an overlong string, too many items, a malformed task
+reference) is reported as `INTERNAL` instead, with where it failed written to
+stderr; a status that fails is dropped like any other malformed status. A
+descriptor that fails stops the server from being built.
+
 ### Idempotency
 
 `idempotencyKey` is the same for every attempt at one request. **Your
 `createTask` must return the task it already created for a key it has seen**,
 from your own storage (for example, label each task `intake-id-<key>` in your
 tracker and search for that label before creating). The SDK also merges concurrent calls
-with the same requester and key inside one process, but only your storage can
+with the same key inside one process, whoever the requester, but only your storage can
 recognise a task created before a restart or by another replica. If the call that
 started a merged creation is aborted before your `createTask` answers, a call
 still waiting with the same key starts it again rather than sharing the abort; a

@@ -4,6 +4,7 @@ import type {
   ITaskStatus,
   ITaskStatusResult,
 } from '../contract/contract.types';
+import { isTaskReference, isTaskStatus } from '../contract/contract-output';
 import { toIntakeDraft } from '../draft/draft.helper';
 import { TaskError } from './task-error';
 
@@ -15,10 +16,6 @@ const MAX_USER_ID_LENGTH = 128;
 const MAX_TASK_IDS = 50;
 
 const MAX_TASK_ID_LENGTH = 256;
-
-const TASK_URL = /^https?:\/\//;
-
-const STATUS_CATEGORIES: readonly string[] = ['todo', 'in_progress', 'done'];
 
 /**
  * Reads `intake_create_task` arguments.
@@ -97,18 +94,16 @@ export function toTaskIds(args: unknown): readonly string[] {
 /**
  * A department's own task reference, checked before it leaves the server.
  *
+ * Held to the output schema, and its `id` and `displayKey` must not be blank.
  * A malformed one is the department's bug, so it is reported as `INTERNAL`
  * here rather than as a schema failure inside the host.
  */
 export function checkedTaskReference(task: ITaskReference): ITaskReference {
-  const valid =
-    nonBlank(task.id) &&
-    nonBlank(task.displayKey) &&
-    (task.url === null ||
-      (typeof task.url === 'string' && TASK_URL.test(task.url))) &&
-    (task.location === null || typeof task.location === 'string');
-
-  if (!valid) {
+  if (
+    !isTaskReference(task) ||
+    !nonBlank(task.id) ||
+    !nonBlank(task.displayKey)
+  ) {
     throw new TaskError(
       'INTERNAL',
       'The department returned a malformed task reference',
@@ -123,7 +118,10 @@ export function checkedTaskReference(task: ITaskReference): ITaskReference {
   };
 }
 
-/** Only statuses for the ids asked about, each checked; the rest are dropped. */
+/**
+ * Only statuses for the ids asked about, each held to the output schema with a
+ * label that is not blank; the rest are dropped.
+ */
 export function checkedStatuses(
   result: ITaskStatusResult,
   taskIds: readonly string[],
@@ -133,12 +131,9 @@ export function checkedStatuses(
     Array.isArray(result?.statuses) ? result.statuses : []
   ).filter(
     (status: ITaskStatus) =>
+      isTaskStatus(status) &&
       asked.has(status.taskId) &&
-      STATUS_CATEGORIES.includes(status.category) &&
-      nonBlank(status.label) &&
-      (status.assignee === null || typeof status.assignee === 'string') &&
-      (status.lastChangedAt === null ||
-        typeof status.lastChangedAt === 'string'),
+      nonBlank(status.label),
   );
 
   return { statuses };
